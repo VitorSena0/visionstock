@@ -83,6 +83,18 @@ Para instruções detalhadas, consulte o [Quick Start Guide](database/QUICKSTART
 - audit_logs         # Logs de auditoria completos
 ```
 
+## .ENV
+
+```env
+# Database# Database Configuration
+DB_URL=jdbc:postgresql://localhost:5432/visionstock
+DB_USERNAME=seu_usuario
+DB_PASSWORD=sua_senha
+
+# Gemini AI
+GEMINI_API_KEY=sua-chave-api-aqui
+```
+
 ## 💼 Casos de Uso
 
 ### 1. Cadastro de Produto via IA
