@@ -55,6 +55,12 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- WebFlux (WebClient for Gemini API calls) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+        </dependency>
+
         <!-- Testing -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
