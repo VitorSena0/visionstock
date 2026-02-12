@@ -126,9 +126,7 @@ public class GeminiService {
             }
 
             // Clean up markdown code fences if present
-            text = text.replaceAll("```json\\s*", "")
-                       .replaceAll("```\\s*", "")
-                       .trim();
+            text = text.replaceAll("```(?:json)?\\s*", "").trim();
 
             JsonNode data = objectMapper.readTree(text);
             if (data == null || data.isMissingNode()) {

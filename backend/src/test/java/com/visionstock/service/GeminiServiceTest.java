@@ -138,7 +138,7 @@ class GeminiServiceTest {
     @Test
     @DisplayName("System instruction should instruct AI to return JSON only")
     void systemInstruction_shouldContainJsonRequirement() {
-        assertTrue(GeminiService.SYSTEM_INSTRUCTION.contains("JSON"));
+        assertTrue(GeminiService.SYSTEM_INSTRUCTION.contains("APENAS um JSON válido"));
         assertTrue(GeminiService.SYSTEM_INSTRUCTION.contains("descricao"));
         assertTrue(GeminiService.SYSTEM_INSTRUCTION.contains("tamanho"));
         assertTrue(GeminiService.SYSTEM_INSTRUCTION.contains("cor"));
