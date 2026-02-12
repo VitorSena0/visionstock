@@ -47,7 +47,8 @@ public class ProductAdminDTO {
      */
     public static ProductAdminDTO fromEntity(Product product) {
         BigDecimal markup = null;
-        if (product.getPrecoCusto() != null
+        if (product.getPrecoVenda() != null
+                && product.getPrecoCusto() != null
                 && product.getPrecoCusto().compareTo(BigDecimal.ZERO) > 0) {
             markup = product.getPrecoVenda()
                     .subtract(product.getPrecoCusto())

@@ -104,6 +104,15 @@ class ProductDTOTest {
     }
 
     @Test
+    @DisplayName("ProductAdminDTO markup should be null when precoVenda is null")
+    void productAdminDTO_markupNullWhenPrecoVendaIsNull() {
+        product.setPrecoVenda(null);
+        ProductAdminDTO dto = ProductAdminDTO.fromEntity(product);
+
+        assertNull(dto.getMarkupPercentual());
+    }
+
+    @Test
     @DisplayName("ProductResponseDTO should map all non-sensitive fields correctly")
     void productResponseDTO_shouldMapAllFields() {
         ProductResponseDTO dto = ProductResponseDTO.fromEntity(product);
