@@ -18,8 +18,8 @@ class GeminiServiceTest {
     @BeforeEach
     void setUp() {
         geminiService = new GeminiService(
-                "test-key", "gemini-1.5-flash",
-                "https://generativelanguage.googleapis.com/v1beta/models",
+                "AIzaSyCD_kLm--872G2II_UhXwjh7u50uvAVwPE", "gemini-2.5-flash",
+                "https://generativelanguage.googleapis.com/v1/models",
                 new ObjectMapper());
     }
 
