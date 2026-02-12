@@ -41,7 +41,7 @@ class ScanControllerTest {
                 .build();
 
         when(geminiService.extractDataFromImage(any())).thenReturn(mockDTO);
-
+        // O arquivo da imagem tem que ficar com o nome "image" para o controller reconhecer, então ficará no diretório de teste mesmo, e não em resources
         MockMultipartFile imageFile = new MockMultipartFile(
                 "image", "label.jpg", "image/jpeg", "fake-image-data".getBytes());
 
