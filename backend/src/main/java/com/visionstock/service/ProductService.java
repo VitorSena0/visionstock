@@ -20,6 +20,7 @@ import java.util.UUID;
 public class ProductService {
 
     private static final Logger logger = LoggerFactory.getLogger(ProductService.class);
+    private static final UUID SYSTEM_USER_ID = new UUID(0, 0);
 
     private final ProductRepository productRepository;
     private final StockMovementRepository stockMovementRepository;
@@ -71,7 +72,7 @@ public class ProductService {
             StockMovement movement = StockMovement.builder()
                     .id(UUID.randomUUID())
                     .productId(product.getId())
-                    .userId(product.getCreatedBy() != null ? product.getCreatedBy() : new UUID(0, 0))
+                    .userId(product.getCreatedBy() != null ? product.getCreatedBy() : SYSTEM_USER_ID)
                     .tipoMovimento(MovementType.ENTRADA.name())
                     .quantidade(dto.getQuantidadeInicial())
                     .valorUnitario(dto.getPrecoCusto() != null ? dto.getPrecoCusto() : BigDecimal.ZERO)
