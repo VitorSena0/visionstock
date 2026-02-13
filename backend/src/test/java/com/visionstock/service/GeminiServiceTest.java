@@ -18,7 +18,7 @@ class GeminiServiceTest {
     @BeforeEach
     void setUp() {
         geminiService = new GeminiService(
-                "AIzaSyCD_kLm--872G2II_UhXwjh7u50uvAVwPE", "gemini-2.5-flash",
+                "${gemini.api.key}", "${gemini.api.model}",
                 "https://generativelanguage.googleapis.com/v1/models",
                 new ObjectMapper());
     }
