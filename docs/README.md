@@ -6,6 +6,7 @@ Documentação completa do projeto VisionStock, um sistema de gestão de estoque
 
 | Documento | Descrição |
 |-----------|-----------|
+| [COMPLETE_SYSTEM_OVERVIEW.md](./COMPLETE_SYSTEM_OVERVIEW.md) | 📘 **Visão completa do sistema** - Arquitetura, banco de dados, backend, IA, workflows |
 | [SETUP.md](./SETUP.md) | Configuração do ambiente de desenvolvimento |
 | [GEMINI_INTEGRATION.md](./GEMINI_INTEGRATION.md) | Integração com Google Gemini AI |
 | [TESTING.md](./TESTING.md) | Guia de testes unitários e de integração |

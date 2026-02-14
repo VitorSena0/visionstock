@@ -21,6 +21,19 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
   - Lições aprendidas sobre mocking vs. objetos reais
   - Checklist de verificação para futuros testes
 
+- **Documentação Completa do Sistema**
+  - `docs/COMPLETE_SYSTEM_OVERVIEW.md` - visão 360° do VisionStock
+  - Arquitetura completa: banco de dados multi-schema, backend Spring Boot, integração com IA
+  - Documentação de todas as tabelas (auth, inventory, finance, system)
+  - Modelos de domínio: Product, ValidationRequest, StockMovement, User
+  - Controllers e endpoints REST com exemplos de request/response
+  - Services com lógica de negócio detalhada (ProductService, ValidationService, GeminiService)
+  - DTOs e estratégias de proteção de dados sensíveis
+  - Diagramas: arquitetura macro, ER, sequência do approval workflow
+  - Fluxo completo da integração com Google Gemini 2.5 Flash
+  - Cenários práticos de uso do approval workflow
+  - Stack tecnológica completa
+
 ### Alterado
 
 - **ProductControllerTest.java** corrigido
