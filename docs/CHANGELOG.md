@@ -2,7 +2,65 @@
 
 Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 
-## [Unreleased] - 2026-02-13
+## [Unreleased] - 2026-02-14
+
+### Adicionado
+
+- **Testes completos do Approval Workflow**
+  - `ValidationServiceTest.java` com 11 casos de teste unitários
+  - Cobertura de 100% dos métodos públicos do `ValidationService`
+  - Testes de criação de solicitações de validação
+  - Testes de aprovação e rejeição de alterações
+  - Testes de listagem e histórico de validações
+  - Testes de contagem de solicitações pendentes
+  - Testes de exceções e casos de erro (produto não encontrado, status inválido)
+  
+- **Documentação da atualização de testes**
+  - `docs/TEST_SUITE_UPDATE.md` - documentação completa das mudanças realizadas
+  - Métricas de cobertura de código e tempo de execução
+  - Lições aprendidas sobre mocking vs. objetos reais
+  - Checklist de verificação para futuros testes
+
+### Alterado
+
+- **ProductControllerTest.java** corrigido
+  - Adicionado `@MockBean` para `ValidationService`
+  - Corrige erro de dependência não satisfeita no contexto do Spring
+  - 5 testes do controller agora passam com sucesso
+
+### Corrigido
+
+- **Erro de dependência no ProductControllerTest**
+  - Problema: `UnsatisfiedDependencyException` ao tentar instanciar `ProductController`
+  - Causa: Faltava mock do `ValidationService` após refatoração do controller
+  - Solução: Adicionado `@MockBean private ValidationService validationService`
+  
+- **ObjectMapper mockado causando NullPointerException**
+  - Problema: Mock do `ObjectMapper` retornava `null` em `createObjectNode()`
+  - Solução: Substituído mock por instância real do `ObjectMapper`
+  - Justificativa: ObjectMapper é leve, rápido e não faz IO
+
+### Métricas
+
+- **Suite de testes completa**
+  - ✅ 47 testes executados
+  - ✅ 0 falhas
+  - ✅ 0 erros
+  - ⏭️ 2 testes de integração pulados (requerem API key)
+  - ⏱️ Tempo total: ~5.3 segundos
+  
+- **Distribuição por módulo**
+  - ValidationServiceTest: 11 testes (novo)
+  - ProductServiceTest: 10 testes
+  - ProductDTOTest: 9 testes
+  - GeminiServiceTest: 7 testes
+  - ProductControllerTest: 5 testes (corrigido)
+  - ScanControllerTest: 3 testes
+  - GeminiServiceIntegrationTest: 2 testes (opcional)
+
+---
+
+## [1.0.0] - 2026-02-13
 
 ### Adicionado
 

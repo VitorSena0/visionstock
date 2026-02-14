@@ -9,8 +9,13 @@ Documentação completa do projeto VisionStock, um sistema de gestão de estoque
 | [SETUP.md](./SETUP.md) | Configuração do ambiente de desenvolvimento |
 | [GEMINI_INTEGRATION.md](./GEMINI_INTEGRATION.md) | Integração com Google Gemini AI |
 | [TESTING.md](./TESTING.md) | Guia de testes unitários e de integração |
+| [TEST_SUITE_UPDATE.md](./TEST_SUITE_UPDATE.md) | Atualização da suite de testes (fevereiro 2026) |
 | [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) | Resolução de problemas comuns |
 | [API.md](./API.md) | Documentação da API REST |
+| [APPROVAL_WORKFLOW.md](./APPROVAL_WORKFLOW.md) | Documentação técnica do Approval Workflow |
+| [APPROVAL_WORKFLOW_TESTS.md](./APPROVAL_WORKFLOW_TESTS.md) | Guia de testes do Approval Workflow |
+| [GIT_CONFLICT_RESOLUTION_TUTORIAL.md](./GIT_CONFLICT_RESOLUTION_TUTORIAL.md) | Tutorial de resolução de conflitos Git |
+| [CHANGELOG.md](./CHANGELOG.md) | Histórico de mudanças do projeto |
 
 ## 🚀 Início Rápido
 

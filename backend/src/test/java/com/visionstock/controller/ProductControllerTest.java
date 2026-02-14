@@ -6,6 +6,7 @@ import com.visionstock.dto.ProductResponseDTO;
 import com.visionstock.exception.DuplicateProductException;
 import com.visionstock.service.GeminiService;
 import com.visionstock.service.ProductService;
+import com.visionstock.service.ValidationService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +37,9 @@ class ProductControllerTest {
 
     @MockBean
     private GeminiService geminiService;
+
+    @MockBean
+    private ValidationService validationService;
 
     @Test
     @DisplayName("POST /api/v1/products should return 201 with product data")
