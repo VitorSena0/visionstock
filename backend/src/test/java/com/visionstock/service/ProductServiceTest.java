@@ -67,7 +67,7 @@ class ProductServiceTest {
         assertNotNull(result);
         assertEquals(productId, result.getId());
         assertEquals("Camiseta Polo Azul", result.getDescricao());
-        assertEquals("VERIFICADO", result.getStatusIa());
+        assertEquals("MANUAL", result.getStatusIa());
         assertEquals("OK", result.getStatusValidacao());
         assertEquals(10, result.getQuantidadeAtual());
 
@@ -75,11 +75,16 @@ class ProductServiceTest {
     }
 
     @Test
-    @DisplayName("createProduct should create stock movement when quantidadeInicial > 0")
+    @DisplayName("createProduct should create stock movement when quantidadeInicial > 0 AND createdBy is present")
     void createProduct_shouldCreateStockMovement() {
+        UUID userId = UUID.randomUUID();
         when(productRepository.existsById(productId)).thenReturn(false);
         when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(false);
-        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> {
+            Product p = inv.getArgument(0);
+            p.setCreatedBy(userId);  // Simulate user being set
+            return p;
+        });
 
         productService.createProduct(validDTO);
 
@@ -91,6 +96,19 @@ class ProductServiceTest {
         assertEquals("ENTRADA", movement.getTipoMovimento());
         assertEquals(10, movement.getQuantidade());
         assertEquals(new BigDecimal("45.00"), movement.getValorUnitario());
+        assertEquals(userId, movement.getUserId());
+    }
+
+    @Test
+    @DisplayName("createProduct should NOT create stock movement when createdBy is null (offline-first)")
+    void createProduct_noCreatedBy_shouldNotCreateMovement() {
+        when(productRepository.existsById(productId)).thenReturn(false);
+        when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(false);
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));  // createdBy stays null
+
+        productService.createProduct(validDTO);
+
+        verify(stockMovementRepository, never()).save(any(StockMovement.class));
     }
 
     @Test
@@ -130,15 +148,15 @@ class ProductServiceTest {
     }
 
     @Test
-    @DisplayName("createProduct should set statusIa to VERIFICADO")
-    void createProduct_shouldSetStatusIaVerificado() {
+    @DisplayName("createProduct should set statusIa to MANUAL")
+    void createProduct_shouldSetStatusIaManual() {
         when(productRepository.existsById(productId)).thenReturn(false);
         when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(false);
         when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
 
         ProductResponseDTO result = productService.createProduct(validDTO);
 
-        assertEquals("VERIFICADO", result.getStatusIa());
+        assertEquals("MANUAL", result.getStatusIa());
     }
 
     @Test
@@ -163,10 +181,15 @@ class ProductServiceTest {
     @Test
     @DisplayName("createProduct should use BigDecimal.ZERO as valorUnitario when precoCusto is null")
     void createProduct_nullPrecoCusto_shouldUseZeroForMovement() {
+        UUID userId = UUID.randomUUID();
         validDTO.setPrecoCusto(null);
         when(productRepository.existsById(productId)).thenReturn(false);
         when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(false);
-        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> {
+            Product p = inv.getArgument(0);
+            p.setCreatedBy(userId);
+            return p;
+        });
 
         productService.createProduct(validDTO);
 

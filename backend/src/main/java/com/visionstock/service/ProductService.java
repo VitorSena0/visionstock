@@ -27,7 +27,6 @@ import java.util.UUID;
 public class ProductService {
 
     private static final Logger logger = LoggerFactory.getLogger(ProductService.class);
-    private static final UUID SYSTEM_USER_ID = new UUID(0, 0);
 
     private final ProductRepository productRepository;
     private final StockMovementRepository stockMovementRepository;
@@ -75,18 +74,19 @@ public class ProductService {
                 .precoCusto(dto.getPrecoCusto())
                 .precoVenda(dto.getPrecoVenda())
                 .quantidadeAtual(dto.getQuantidadeInicial() != null ? dto.getQuantidadeInicial() : 0)
-                .statusIa("VERIFICADO")
+                .statusIa("MANUAL")
                 .statusValidacao("OK")
                 .build();
 
         product = productRepository.save(product);
 
-        // 4. Create initial stock movement if quantidadeInicial > 0
-        if (dto.getQuantidadeInicial() != null && dto.getQuantidadeInicial() > 0) {
+        // 4. Create initial stock movement if quantidadeInicial > 0 AND a user is provided
+        // In offline-first scenarios, if no user is provided, the movement will be created later during sync
+        if (dto.getQuantidadeInicial() != null && dto.getQuantidadeInicial() > 0 && product.getCreatedBy() != null) {
             StockMovement movement = StockMovement.builder()
                     .id(UUID.randomUUID())
                     .productId(product.getId())
-                    .userId(product.getCreatedBy() != null ? product.getCreatedBy() : SYSTEM_USER_ID)
+                    .userId(product.getCreatedBy())
                     .tipoMovimento(MovementType.ENTRADA.name())
                     .quantidade(dto.getQuantidadeInicial())
                     .valorUnitario(dto.getPrecoCusto() != null ? dto.getPrecoCusto() : BigDecimal.ZERO)
@@ -96,6 +96,9 @@ public class ProductService {
             stockMovementRepository.save(movement);
             logger.info("Initial stock movement created for product {}: {} units",
                     product.getId(), dto.getQuantidadeInicial());
+        } else if (dto.getQuantidadeInicial() != null && dto.getQuantidadeInicial() > 0) {
+            logger.info("Product created with initial quantity {} but no user provided. Stock movement will be created during sync.",
+                    dto.getQuantidadeInicial());
         }
 
         logger.info("Product created successfully: {}", product.getId());
