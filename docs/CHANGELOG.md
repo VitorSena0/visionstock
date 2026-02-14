@@ -6,6 +6,34 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 
 ### Adicionado
 
+- **Etapa 6 - Segurança e Autenticação com JWT (Spring Security 6)**
+  - Dependências de segurança adicionadas ao backend:
+    - `spring-boot-starter-security`
+    - `jjwt-api`, `jjwt-impl`, `jjwt-jackson`
+    - `spring-security-test`
+  - Nova camada `security/` com componentes:
+    - `SecurityConfig` com `SecurityFilterChain` stateless
+    - `JwtService` para gerar/validar token e extrair claims
+    - `JwtAuthenticationFilter` aplicado antes de `UsernamePasswordAuthenticationFilter`
+    - `CustomUserDetailsService` e principal customizado `AuthenticatedUser`
+    - Handlers REST para erros de autenticação/autorização (`401`/`403`)
+  - Autenticação implementada:
+    - `AuthService` com `register` e `login`
+    - Senhas com hash `BCryptPasswordEncoder`
+    - JWT com claims `userId` e `role`
+  - Novos endpoints públicos de autenticação:
+    - `POST /api/v1/auth/register`
+    - `POST /api/v1/auth/login`
+  - Novo `ValidationController` dedicado:
+    - `GET /api/v1/validation`
+    - `POST /api/v1/validation/{id}/approve`
+    - `POST /api/v1/validation/{id}/reject`
+    - Compatibilidade mantida para `/api/v1/products/validation/**`
+  - Novos artefatos de domínio de autenticação:
+    - `UserRepository`
+    - `LoginDTO`, `RegisterDTO`, `AuthResponseDTO`, `ValidationDecisionDTO`
+    - `ApiErrorResponse` e `GlobalExceptionHandler`
+
 - **Testes completos do Approval Workflow**
   - `ValidationServiceTest.java` com 11 casos de teste unitários
   - Cobertura de 100% dos métodos públicos do `ValidationService`
@@ -36,12 +64,36 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 
 ### Alterado
 
+- **ProductController atualizado para identidade via JWT**
+  - Removidos parâmetros manuais de identificação do usuário em update/create
+  - `@AuthenticationPrincipal` agora fornece o usuário autenticado
+  - `createProduct` passa a preencher `createdBy`/`updatedBy` com o `userId` do token
+  - `updateProduct` passa a usar `role` e `userId` vindos do contexto de segurança
+
+- **ProductService.createProduct()**
+  - Assinatura alterada para receber `createdBy` explicitamente a partir do contexto autenticado
+  - Movimentação inicial de estoque vinculada ao usuário autenticado
+
+- **Controle de acesso por endpoint aplicado em `SecurityConfig`**
+  - `/api/v1/auth/**` público
+  - `/api/v1/scan` restrito a `USER`/`ADMIN`
+  - `/api/v1/validation/**` restrito a `ADMIN`
+  - `POST`/`PUT` em `/api/v1/products` restritos a `USER`/`ADMIN`
+
 - **ProductControllerTest.java** corrigido
   - Adicionado `@MockBean` para `ValidationService`
   - Corrige erro de dependência não satisfeita no contexto do Spring
   - 5 testes do controller agora passam com sucesso
 
 ### Corrigido
+
+- **Respostas de erro de autenticação/autorização em JSON limpo**
+  - `401 Unauthorized` agora retorna payload padronizado (sem stacktrace padrão do Spring)
+  - `403 Forbidden` agora retorna payload padronizado
+
+- **Ambiente de testes com Mockito no JDK 21**
+  - Adicionado `mock-maker-subclass` em `src/test/resources/mockito-extensions`
+  - Evita falha de attach do agente inline em ambientes restritos
 
 - **Erro de dependência no ProductControllerTest**
   - Problema: `UnsatisfiedDependencyException` ao tentar instanciar `ProductController`
@@ -54,6 +106,10 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
   - Justificativa: ObjectMapper é leve, rápido e não faz IO
 
 ### Métricas
+
+- **Validação pós-Etapa 6**
+  - ✅ `mvn -q -DskipTests compile` executado com sucesso
+  - ✅ `mvn -q test` executado com sucesso após integração JWT
 
 - **Suite de testes completa**
   - ✅ 47 testes executados
@@ -168,6 +224,11 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
   - Solução: Documentação de instalação da extensão Lombok
 
 ### Segurança
+
+- **Autenticação e autorização JWT implementadas**
+  - API passou a operar em modo stateless para endpoints protegidos
+  - Roles `ADMIN` e `USER` aplicadas no nível de filtro de segurança
+  - Identidade do usuário deixa de depender de parâmetros manipuláveis no request
 
 - ⚠️ **Chave de API exposta** durante desenvolvimento
   - Recomendação: Regenerar chave após testes

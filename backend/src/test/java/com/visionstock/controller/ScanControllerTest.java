@@ -1,10 +1,12 @@
 package com.visionstock.controller;
 
 import com.visionstock.dto.ProductResponseDTO;
+import com.visionstock.security.JwtAuthenticationFilter;
 import com.visionstock.service.GeminiService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.mock.web.MockMultipartFile;
@@ -18,6 +20,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(ScanController.class)
+@AutoConfigureMockMvc(addFilters = false)
 class ScanControllerTest {
 
     @Autowired
@@ -25,6 +28,9 @@ class ScanControllerTest {
 
     @MockBean
     private GeminiService geminiService;
+
+    @MockBean
+    private JwtAuthenticationFilter jwtAuthenticationFilter;
 
     @Test
     @DisplayName("POST /api/v1/scan should return product data from AI")

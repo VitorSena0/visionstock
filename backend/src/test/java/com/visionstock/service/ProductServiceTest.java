@@ -32,15 +32,20 @@ class ProductServiceTest {
     @Mock
     private StockMovementRepository stockMovementRepository;
 
+    @Mock
+    private ValidationService validationService;
+
     @InjectMocks
     private ProductService productService;
 
     private ProductCreateDTO validDTO;
     private UUID productId;
+    private UUID authenticatedUserId;
 
     @BeforeEach
     void setUp() {
         productId = UUID.randomUUID();
+        authenticatedUserId = UUID.randomUUID();
         validDTO = ProductCreateDTO.builder()
                 .id(productId)
                 .referencia("REF-001")
@@ -62,7 +67,7 @@ class ProductServiceTest {
         when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(false);
         when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        ProductResponseDTO result = productService.createProduct(validDTO);
+        ProductResponseDTO result = productService.createProduct(validDTO, authenticatedUserId);
 
         assertNotNull(result);
         assertEquals(productId, result.getId());
@@ -80,13 +85,9 @@ class ProductServiceTest {
         UUID userId = UUID.randomUUID();
         when(productRepository.existsById(productId)).thenReturn(false);
         when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(false);
-        when(productRepository.save(any(Product.class))).thenAnswer(inv -> {
-            Product p = inv.getArgument(0);
-            p.setCreatedBy(userId);  // Simulate user being set
-            return p;
-        });
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        productService.createProduct(validDTO);
+        productService.createProduct(validDTO, userId);
 
         ArgumentCaptor<StockMovement> captor = ArgumentCaptor.forClass(StockMovement.class);
         verify(stockMovementRepository).save(captor.capture());
@@ -100,13 +101,13 @@ class ProductServiceTest {
     }
 
     @Test
-    @DisplayName("createProduct should NOT create stock movement when createdBy is null (offline-first)")
+    @DisplayName("createProduct should NOT create stock movement when authenticated user is null")
     void createProduct_noCreatedBy_shouldNotCreateMovement() {
         when(productRepository.existsById(productId)).thenReturn(false);
         when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(false);
-        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));  // createdBy stays null
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        productService.createProduct(validDTO);
+        productService.createProduct(validDTO, null);
 
         verify(stockMovementRepository, never()).save(any(StockMovement.class));
     }
@@ -119,7 +120,7 @@ class ProductServiceTest {
         when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(false);
         when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        productService.createProduct(validDTO);
+        productService.createProduct(validDTO, authenticatedUserId);
 
         verify(stockMovementRepository, never()).save(any(StockMovement.class));
     }
@@ -130,7 +131,7 @@ class ProductServiceTest {
         when(productRepository.existsById(productId)).thenReturn(true);
 
         assertThrows(DuplicateProductException.class,
-                () -> productService.createProduct(validDTO));
+                () -> productService.createProduct(validDTO, authenticatedUserId));
 
         verify(productRepository, never()).save(any(Product.class));
     }
@@ -142,7 +143,7 @@ class ProductServiceTest {
         when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(true);
 
         assertThrows(DuplicateProductException.class,
-                () -> productService.createProduct(validDTO));
+                () -> productService.createProduct(validDTO, authenticatedUserId));
 
         verify(productRepository, never()).save(any(Product.class));
     }
@@ -154,7 +155,7 @@ class ProductServiceTest {
         when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(false);
         when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        ProductResponseDTO result = productService.createProduct(validDTO);
+        ProductResponseDTO result = productService.createProduct(validDTO, authenticatedUserId);
 
         assertEquals("MANUAL", result.getStatusIa());
     }
@@ -169,7 +170,7 @@ class ProductServiceTest {
         when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(false);
         when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        ProductResponseDTO result = productService.createProduct(validDTO);
+        ProductResponseDTO result = productService.createProduct(validDTO, authenticatedUserId);
 
         assertEquals(frontendUUID, result.getId());
 
@@ -185,13 +186,9 @@ class ProductServiceTest {
         validDTO.setPrecoCusto(null);
         when(productRepository.existsById(productId)).thenReturn(false);
         when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(false);
-        when(productRepository.save(any(Product.class))).thenAnswer(inv -> {
-            Product p = inv.getArgument(0);
-            p.setCreatedBy(userId);
-            return p;
-        });
+        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        productService.createProduct(validDTO);
+        productService.createProduct(validDTO, userId);
 
         ArgumentCaptor<StockMovement> captor = ArgumentCaptor.forClass(StockMovement.class);
         verify(stockMovementRepository).save(captor.capture());
@@ -205,7 +202,7 @@ class ProductServiceTest {
         when(productRepository.existsById(productId)).thenReturn(false);
         when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        productService.createProduct(validDTO);
+        productService.createProduct(validDTO, authenticatedUserId);
 
         verify(productRepository, never()).existsByCodigoBarras(any());
         verify(productRepository).save(any(Product.class));

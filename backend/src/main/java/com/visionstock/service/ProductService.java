@@ -45,7 +45,7 @@ public class ProductService {
      * This operation is transactional.
      */
     @Transactional
-    public ProductResponseDTO createProduct(ProductCreateDTO dto) {
+    public ProductResponseDTO createProduct(ProductCreateDTO dto, UUID createdBy) {
         logger.info("Creating product with ID: {}", dto.getId());
 
         // 1. Check for duplicate by ID
@@ -76,12 +76,13 @@ public class ProductService {
                 .quantidadeAtual(dto.getQuantidadeInicial() != null ? dto.getQuantidadeInicial() : 0)
                 .statusIa("MANUAL")
                 .statusValidacao("OK")
+                .createdBy(createdBy)
+                .updatedBy(createdBy)
                 .build();
 
         product = productRepository.save(product);
 
         // 4. Create initial stock movement if quantidadeInicial > 0 AND a user is provided
-        // In offline-first scenarios, if no user is provided, the movement will be created later during sync
         if (dto.getQuantidadeInicial() != null && dto.getQuantidadeInicial() > 0 && product.getCreatedBy() != null) {
             StockMovement movement = StockMovement.builder()
                     .id(UUID.randomUUID())
@@ -97,7 +98,7 @@ public class ProductService {
             logger.info("Initial stock movement created for product {}: {} units",
                     product.getId(), dto.getQuantidadeInicial());
         } else if (dto.getQuantidadeInicial() != null && dto.getQuantidadeInicial() > 0) {
-            logger.info("Product created with initial quantity {} but no user provided. Stock movement will be created during sync.",
+            logger.info("Product created with initial quantity {} but no authenticated user was provided. No stock movement was created.",
                     dto.getQuantidadeInicial());
         }
 

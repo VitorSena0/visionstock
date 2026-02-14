@@ -1,6 +1,6 @@
 # VisionStock - Visão Completa do Sistema
 
-**Versão:** 1.1.0  
+**Versão:** 1.2.0  
 **Data:** 14 de fevereiro de 2026  
 **Tipo:** Documentação Técnica Completa
 
@@ -31,7 +31,7 @@
 |----------------|-----------|
 | 🤖 **IA Integrada** | Google Gemini 2.5 Flash para OCR e extração de dados |
 | 📴 **Offline-First** | Funciona completamente sem internet |
-| 🔐 **Controle de Acesso** | Sistema de roles (ADMIN/USER) com workflow de aprovação |
+| 🔐 **Controle de Acesso** | Spring Security 6 + JWT com roles (ADMIN/USER) e workflow de aprovação |
 | 💰 **Gestão Financeira** | Controle completo de custos, vendas e margens |
 | 📊 **Relatórios** | Dashboards de lucratividade e análise de estoque |
 | 🔄 **Sincronização** | Sistema de sync para ambientes offline-first |
@@ -65,13 +65,22 @@
 │  ┌──────────────────────────────────────────────────────┐  │
 │  │ Controllers (REST)                                    │  │
 │  │  • ProductController                                  │  │
+│  │  • ValidationController                               │  │
 │  │  • ScanController                                     │  │
+│  │  • AuthController                                     │  │
 │  └────────────┬─────────────────────────────────────────┘  │
 │               │                                              │
 │  ┌────────────▼─────────────────────────────────────────┐  │
 │  │ Services (Business Logic)                            │  │
 │  │  • ProductService         • ValidationService        │  │
-│  │  • GeminiService          • (Future: AuthService)    │  │
+│  │  • GeminiService          • AuthService              │  │
+│  └────────────┬─────────────────────────────────────────┘  │
+│               │                                              │
+│  ┌────────────▼─────────────────────────────────────────┐  │
+│  │ Security (AuthN/AuthZ)                               │  │
+│  │  • SecurityFilterChain (stateless)                   │  │
+│  │  • JWT Filter + JWT Service                          │  │
+│  │  • CustomUserDetailsService                          │  │
 │  └────────────┬─────────────────────────────────────────┘  │
 │               │                                              │
 │  ┌────────────▼─────────────────────────────────────────┐  │
@@ -79,6 +88,7 @@
 │  │  • ProductRepository                                  │  │
 │  │  • ValidationRequestRepository                        │  │
 │  │  • StockMovementRepository                            │  │
+│  │  • UserRepository                                     │  │
 │  └────────────┬─────────────────────────────────────────┘  │
 └───────────────┼──────────────────────────────────────────────┘
                 │ JPA/Hibernate
@@ -107,6 +117,7 @@
 
 - **Layered Architecture** (Camadas: Controller → Service → Repository)
 - **Strategy Pattern** (updateProduct com lógica baseada em role)
+- **Stateless Security Pattern** (JWT Bearer Token + Spring Security 6)
 - **DTO Pattern** (separação entre entidades e DTOs de transporte)
 - **Repository Pattern** (abstração de acesso a dados)
 - **Offline-First Pattern** (dados locais primeiro, sync depois)
@@ -420,13 +431,17 @@ CREATE INDEX idx_stock_movements_data ON finance.stock_movements(data_movimento 
 ```
 com.visionstock
 ├── controller/          # REST Controllers
+│   ├── AuthController.java
 │   ├── ProductController.java
+│   ├── ValidationController.java
 │   └── ScanController.java
 ├── service/            # Business Logic
+│   ├── AuthService.java
 │   ├── ProductService.java
 │   ├── ValidationService.java
 │   └── GeminiService.java
 ├── repository/         # Data Access (Spring Data JPA)
+│   ├── UserRepository.java
 │   ├── ProductRepository.java
 │   ├── ValidationRequestRepository.java
 │   └── StockMovementRepository.java
@@ -443,15 +458,41 @@ com.visionstock
 │       ├── ValidationStatus.java
 │       └── MovementType.java
 ├── dto/                # Data Transfer Objects
+│   ├── LoginDTO.java
+│   ├── RegisterDTO.java
+│   ├── AuthResponseDTO.java
 │   ├── ProductCreateDTO.java
 │   ├── ProductResponseDTO.java
 │   ├── ProductUpdateDTO.java
 │   ├── ProductAdminDTO.java
+│   ├── ValidationDecisionDTO.java
 │   └── ValidationRequestDTO.java
+├── security/           # Autenticação e Autorização
+│   ├── SecurityConfig.java
+│   ├── JwtService.java
+│   ├── JwtAuthenticationFilter.java
+│   ├── CustomUserDetailsService.java
+│   ├── AuthenticatedUser.java
+│   ├── RestAuthenticationEntryPoint.java
+│   └── RestAccessDeniedHandler.java
 └── exception/          # Custom Exceptions
+    ├── ApiErrorResponse.java
+    ├── GlobalExceptionHandler.java
     ├── ResourceNotFoundException.java
     └── DuplicateProductException.java
 ```
+
+### Camada de Segurança (Spring Security 6 + JWT)
+
+- **Autenticação:** Bearer Token JWT com assinatura HMAC.
+- **Claims do token:** `sub` (email), `userId` e `role`.
+- **Autorização por rota:**
+  - `/api/v1/auth/**` → público
+  - `/api/v1/scan` → `USER` ou `ADMIN`
+  - `/api/v1/validation/**` → `ADMIN`
+  - `POST`/`PUT` em `/api/v1/products` → `USER` ou `ADMIN`
+- **Comportamento stateless:** CSRF desabilitado para API e sessão `STATELESS`.
+- **Erros de segurança padronizados:** respostas JSON para `401` e `403`.
 
 ---
 
@@ -926,67 +967,77 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, UU
 
 ## 🌐 APIs REST
 
-### ProductController
+### Autenticação e autorização
 
-#### `POST /api/v1/products`
-**Criar novo produto**
+- Endpoints públicos: `POST /api/v1/auth/register` e `POST /api/v1/auth/login`
+- Todos os demais endpoints protegidos exigem:
+  - `Authorization: Bearer <jwt>`
+- Claims relevantes no JWT:
+  - `sub` (email), `userId`, `role`
+
+### AuthController
+
+#### `POST /api/v1/auth/register`
+**Registrar usuário (cadastro público de USER)**
 
 **Request:**
 ```json
 {
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "referencia": "REF-001",
-  "descricao": "Camiseta Polo Azul",
-  "tamanho": "M",
-  "cor": "Azul",
-  "marca": "Nike",
-  "codigoBarras": "7891234567890",
-  "precoCusto": 45.00,
-  "precoVenda": 89.90,
-  "quantidadeInicial": 10
+  "nome": "Maria Oliveira",
+  "email": "maria@visionstock.com",
+  "password": "SenhaForte123!"
 }
 ```
 
 **Response (201 Created):**
 ```json
 {
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "referencia": "REF-001",
-  "descricao": "Camiseta Polo Azul",
-  "tamanho": "M",
-  "cor": "Azul",
-  "marca": "Nike",
-  "codigoBarras": "7891234567890",
-  "precoVenda": 89.90,
-  "quantidadeAtual": 10,
-  "quantidadeMinima": 0,
-  "statusIa": "MANUAL",
-  "statusValidacao": "OK",
-  "syncStatus": "PENDENTE",
-  "createdAt": "2026-02-14T18:00:00Z",
-  "updatedAt": "2026-02-14T18:00:00Z"
+  "token": "eyJhbGciOiJIUzI1NiJ9...",
+  "role": "USER",
+  "userId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+#### `POST /api/v1/auth/login`
+**Autenticar usuário**
+
+**Request:**
+```json
+{
+  "email": "maria@visionstock.com",
+  "password": "SenhaForte123!"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiJ9...",
+  "role": "USER",
+  "userId": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
 ---
 
-#### `PUT /api/v1/products/{id}?role=USER&userId={uuid}`
+### ProductController
+
+#### `POST /api/v1/products`
+**Criar novo produto (USER ou ADMIN)**
+
+**Observação:** `createdBy` e `updatedBy` são preenchidos automaticamente a partir do `userId` do token JWT.
+
+#### `PUT /api/v1/products/{id}`
 **Atualizar produto (com workflow de aprovação)**
 
-**Request (USER):**
-```json
-{
-  "descricao": "Camiseta Polo Verde",
-  "cor": "Verde",
-  "precoVenda": 94.90
-}
-```
+**Observação:** Role e usuário são obtidos do JWT, sem `userId` em query param.
 
 **Response para USER (202 Accepted):**
 ```json
 {
+  "success": true,
   "status": "PENDING_APPROVAL",
-  "message": "Aguardando aprovação do gerente",
+  "message": "Alteração enviada para aprovação do gerente",
   "validationRequestId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 }
 ```
@@ -994,139 +1045,61 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, UU
 **Response para ADMIN (200 OK):**
 ```json
 {
+  "success": true,
   "status": "UPDATED",
+  "message": "Produto atualizado com sucesso",
   "product": {
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "descricao": "Camiseta Polo Verde",
     "cor": "Verde",
-    "precoVenda": 94.90,
-    ...
+    "precoVenda": 94.90
   }
 }
 ```
 
+#### `GET /api/v1/products/{id}/validations`
+**Histórico de validações de um produto (ADMIN)**
+
 ---
+
+### ValidationController
 
 #### `GET /api/v1/validation`
-**Listar fila de validações pendentes (ADMIN apenas)**
-
-**Response (200 OK):**
-```json
-[
-  {
-    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "productId": "550e8400-e29b-41d4-a716-446655440000",
-    "productReferencia": "REF-001",
-    "productDescricao": "Camiseta Polo Azul",
-    "requestedBy": "user-uuid",
-    "status": "PENDING",
-    "originalData": {
-      "descricao": "Camiseta Polo Azul",
-      "cor": "Azul",
-      "precoVenda": "89.90"
-    },
-    "newData": {
-      "descricao": "Camiseta Polo Verde",
-      "cor": "Verde",
-      "precoVenda": "94.90"
-    },
-    "changesSummary": "Descrição alterada, Cor alterada, Preço alterado",
-    "requestedAt": "2026-02-14T18:30:00Z"
-  }
-]
-```
-
----
+**Listar fila de validações pendentes (ADMIN)**
 
 #### `POST /api/v1/validation/{id}/approve`
-**Aprovar solicitação de validação**
+**Aprovar solicitação de validação (ADMIN)**
 
-**Request:**
+**Request (opcional):**
 ```json
 {
-  "adminId": "admin-uuid",
   "reviewNote": "Alteração aprovada conforme solicitado"
 }
 ```
 
-**Response (200 OK):**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "descricao": "Camiseta Polo Verde",
-  "cor": "Verde",
-  "precoVenda": 94.90,
-  "updatedBy": "admin-uuid",
-  ...
-}
-```
-
----
-
 #### `POST /api/v1/validation/{id}/reject`
-**Rejeitar solicitação de validação**
+**Rejeitar solicitação de validação (ADMIN)**
 
-**Request:**
+**Request (opcional):**
 ```json
 {
-  "adminId": "admin-uuid",
   "reviewNote": "Preço muito alto, não corresponde ao mercado"
 }
 ```
 
-**Response (200 OK):**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "descricao": "Camiseta Polo Azul",
-  "cor": "Azul",
-  "precoVenda": 89.90,
-  ...
-}
-```
-*Produto permanece inalterado*
-
----
-
-#### `GET /api/v1/products/{id}/validations`
-**Histórico de validações de um produto**
-
-**Response (200 OK):**
-```json
-[
-  {
-    "id": "validation-uuid-1",
-    "status": "APPROVED",
-    "changesSummary": "Preço aumentado",
-    "requestedBy": "user-uuid",
-    "reviewedBy": "admin-uuid",
-    "reviewNote": "Ajuste conforme inflação",
-    "requestedAt": "2026-02-10T10:00:00Z",
-    "reviewedAt": "2026-02-10T14:30:00Z"
-  },
-  {
-    "id": "validation-uuid-2",
-    "status": "REJECTED",
-    "changesSummary": "Descrição alterada",
-    "requestedBy": "user-uuid",
-    "reviewedBy": "admin-uuid",
-    "reviewNote": "Descrição incorreta",
-    "requestedAt": "2026-02-12T09:00:00Z",
-    "reviewedAt": "2026-02-12T09:15:00Z"
-  }
-]
-```
+**Compatibilidade de rota:** os mesmos endpoints também respondem em `/api/v1/products/validation/**`.
 
 ---
 
 ### ScanController
 
 #### `POST /api/v1/scan`
-**Extrair dados de produto via foto de etiqueta**
+**Extrair dados de produto via foto de etiqueta (USER ou ADMIN)**
 
 **Request (multipart/form-data):**
 ```
 POST /api/v1/scan
+Authorization: Bearer <jwt>
 Content-Type: multipart/form-data
 
 image: [arquivo de imagem]
@@ -1492,7 +1465,7 @@ Usuario tenta atualizar produto
 |------------|------------|
 | **Banco de Dados** | PostgreSQL 15+ com Multi-Schema |
 | **Servidor de Aplicação** | Tomcat Embedded (Spring Boot) |
-| **Autenticação** | JWT (futuro) |
+| **Autenticação** | Spring Security 6 + JWT (implementado) |
 | **Deploy** | Docker (futuro) |
 
 ---
@@ -1629,7 +1602,7 @@ USER          Frontend      ProductController  ProductService  ValidationService
   │               │                 │                 │                │            │
   │               │──(2) PUT────────▶│                 │                │            │
   │               │   /products/{id} │                 │                │            │
-  │               │   ?role=USER     │                 │                │            │
+  │               │ + Bearer Token   │                 │                │            │
   │               │                  │                 │                │            │
   │               │                  │──(3)────────────▶│                │            │
   │               │                  │ updateProduct() │                │            │
@@ -1659,7 +1632,7 @@ USER          Frontend      ProductController  ProductService  ValidationService
                   
 ═══════════════════ Tempo passa, ADMIN revisa ════════════════════
 
-ADMIN         Frontend      ProductController  ValidationService  ProductService  Database
+ADMIN         Frontend    ValidationController ValidationService  ProductService  Database
   │               │                 │                 │                │            │
   │──(11) Review─▶│                 │                 │                │            │
   │               │                 │                 │                │            │
@@ -1722,10 +1695,10 @@ ADMIN         Frontend      ProductController  ValidationService  ProductService
 
 ### Backlog de Funcionalidades
 
-1. **Autenticação JWT**
-   - Login/Logout
+1. **Evolução da Segurança JWT**
    - Refresh tokens
-   - Controle de sessão
+   - Revogação de token (blacklist/rotation)
+   - Hardening de políticas de expiração
 
 2. **Categorias Hierárquicas**
    - CRUD completo
@@ -1780,5 +1753,5 @@ ADMIN         Frontend      ProductController  ValidationService  ProductService
 ---
 
 **Última Atualização:** 14 de fevereiro de 2026  
-**Versão do Documento:** 1.0.0  
+**Versão do Documento:** 1.2.0  
 **Autor:** Equipe VisionStock

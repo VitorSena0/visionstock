@@ -3,14 +3,21 @@ package com.visionstock.controller;
 import java.math.BigDecimal;
 import java.util.UUID;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -20,11 +27,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.visionstock.dto.ProductCreateDTO;
 import com.visionstock.dto.ProductResponseDTO;
 import com.visionstock.exception.DuplicateProductException;
+import com.visionstock.security.AuthenticatedUser;
+import com.visionstock.security.JwtAuthenticationFilter;
 import com.visionstock.service.GeminiService;
 import com.visionstock.service.ProductService;
 import com.visionstock.service.ValidationService;
 
 @WebMvcTest(ProductController.class)
+@AutoConfigureMockMvc(addFilters = false)
 class ProductControllerTest {
 
         @Autowired
@@ -41,6 +51,21 @@ class ProductControllerTest {
 
         @MockBean
         private ValidationService validationService;
+
+        @MockBean
+        private JwtAuthenticationFilter jwtAuthenticationFilter;
+
+        @BeforeEach
+        void setAuthenticationContext() {
+                SecurityContext context = SecurityContextHolder.createEmptyContext();
+                context.setAuthentication(authenticatedUserToken());
+                SecurityContextHolder.setContext(context);
+        }
+
+        @AfterEach
+        void clearAuthenticationContext() {
+                SecurityContextHolder.clearContext();
+        }
 
         @Test
         @DisplayName("POST /api/v1/products should return 201 with product data")
@@ -74,7 +99,7 @@ class ProductControllerTest {
                                 .statusValidacao("OK")
                                 .build();
 
-                when(productService.createProduct(any(ProductCreateDTO.class))).thenReturn(responseDTO);
+                when(productService.createProduct(any(ProductCreateDTO.class), any(UUID.class))).thenReturn(responseDTO);
 
                 mockMvc.perform(post("/api/v1/products")
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -138,12 +163,26 @@ class ProductControllerTest {
                                 .quantidadeInicial(5)
                                 .build();
 
-                when(productService.createProduct(any(ProductCreateDTO.class)))
+                when(productService.createProduct(any(ProductCreateDTO.class), any(UUID.class)))
                                 .thenThrow(new DuplicateProductException("Product already exists"));
 
                 mockMvc.perform(post("/api/v1/products")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(objectMapper.writeValueAsString(dto)))
                                 .andExpect(status().isConflict());
+        }
+
+        private UsernamePasswordAuthenticationToken authenticatedUserToken() {
+                AuthenticatedUser principal = new AuthenticatedUser(
+                                UUID.randomUUID(),
+                                "user@visionstock.com",
+                                "$2a$10$dummyhashdummyhashdummyhashdum",
+                                "USER",
+                                true);
+
+                return new UsernamePasswordAuthenticationToken(
+                                principal,
+                                null,
+                                java.util.List.of(new SimpleGrantedAuthority("ROLE_USER")));
         }
 }
