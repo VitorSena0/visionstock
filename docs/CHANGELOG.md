@@ -2,9 +2,28 @@
 
 Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 
-## [Unreleased] - 2026-02-12
+## [Unreleased] - 2026-02-13
 
 ### Adicionado
+
+- **Fluxo de Aprovação (Approval Workflow)** para atualizações de produtos
+  - Sistema de "Guard-Rail" diferenciando permissões por role (ADMIN vs USER/Estoquista)
+  - `ValidationRequest` entidade JPA mapeada para tabela `inventory.validation_queue` com JSONB
+  - `UserRole` enum (ADMIN, USER) para tipagem segura de papéis
+  - `ValidationStatus` enum (PENDING, APPROVED, REJECTED) para estados de validação
+  - `ProductUpdateDTO` com campos editáveis (descricao, cor, tamanho, precoVenda, nota)
+  - `ValidationRequestDTO` para visualização em painel administrativo com diffs JSON
+  - `ValidationRequestRepository` com 7 métodos de query especializados
+  - `ValidationService` com lógica completa de aprovação/rejeição (7+ métodos)
+  - `ProductService.updateProduct()` com Strategy Pattern baseado no role do usuário
+  - 5 novos endpoints REST no `ProductController`:
+    - `PUT /api/v1/products/{id}` - Atualizar com workflow (ADMIN = direto, USER = fila)
+    - `GET /api/v1/validation` - Listar requisições pendentes (admin panel)
+    - `POST /api/v1/validation/{id}/approve` - Aprovar mudanças
+    - `POST /api/v1/validation/{id}/reject` - Rejeitar mudanças
+    - `GET /api/v1/products/{id}/validations` - Histórico de validações do produto
+  - `ResourceNotFoundException` exceção customizada
+  - Operações transacionais (@Transactional) para atomicidade nas aprovações
 
 - **Integração com Google Gemini AI** para análise de etiquetas de produtos
   - Endpoint `POST /api/scan` para upload de imagens
@@ -28,12 +47,24 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
   - `docs/TESTING.md` - guia de testes
   - `docs/TROUBLESHOOTING.md` - resolução de problemas
   - `docs/API.md` - documentação da API REST
+  - `docs/APPROVAL_WORKFLOW.md` - documentação técnica completa do Approval Workflow (700+ linhas)
+  - `docs/APPROVAL_WORKFLOW_TESTS.md` - guia com 6 cenários de teste práticos (350+ linhas)
+  - `docs/IMPLEMENTATION_SUMMARY.md` - resumo executivo dos entregáveis
+  - `docs/GIT_CONFLICT_RESOLUTION_TUTORIAL.md` - tutorial detalhado de resolução de conflitos de git
 
 - **Configuração de variáveis de ambiente**
   - Arquivo `.env` para credenciais sensíveis
   - Arquivo `.env.example` como template
 
 ### Alterado
+
+- **ProductService** refatorizado para suportar Strategy Pattern
+  - `createProduct()` mantém comportamento original
+  - Novo método `updateProduct()` que decide entre atualização direta ou criação de fila
+
+- **ProductController** estendido com novos endpoints
+  - Anterior: apenas `GET /api/v1/products` e `POST /api/v1/products`
+  - Atual: 5 novos endpoints para gerenciar fluxo de aprovação
 
 - **Modelo Gemini atualizado** de `gemini-1.5-flash` para `gemini-2.0-flash`
   - Modelo anterior foi descontinuado pelo Google
@@ -46,6 +77,15 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
   - Usa `assumeTrue()` ao invés de falhar o teste
 
 ### Corrigido
+
+- **Conflitos de git durante merge de branches divergentes**
+  - Cenário: rebase travado com arquivo swap do editor
+  - Solução: transição para merge strategy com resolução manual de conflitos
+  - Resultado: sincronização bem-sucedida de Approval Workflow com origin/develop
+
+- **Arquivo COMMIT_EDITMSG.swp** travando rebase
+  - Causa: vim/vi deixou sessão de edição aberta
+  - Solução: limpeza de arquivos swap e reset de estado git
 
 - Erro `400 Bad Request` ao chamar API Gemini
   - Causa: URL incorreta (`v1` ao invés de `v1beta`)

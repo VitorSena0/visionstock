@@ -65,7 +65,7 @@ class ProductControllerTest {
                 .codigoBarras("7891234567890")
                 .precoVenda(new BigDecimal("89.90"))
                 .quantidadeAtual(10)
-                .statusIa("VERIFICADO")
+                .statusIa("MANUAL")
                 .statusValidacao("OK")
                 .build();
 
@@ -77,7 +77,7 @@ class ProductControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(productId.toString()))
                 .andExpect(jsonPath("$.descricao").value("Camiseta Polo Azul"))
-                .andExpect(jsonPath("$.statusIa").value("VERIFICADO"))
+                .andExpect(jsonPath("$.statusIa").value("MANUAL"))
                 .andExpect(jsonPath("$.quantidadeAtual").value(10));
     }
 
