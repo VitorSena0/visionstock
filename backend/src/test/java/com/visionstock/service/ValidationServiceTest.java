@@ -1,5 +1,27 @@
 package com.visionstock.service;
 
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import static org.mockito.ArgumentMatchers.any;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import org.mockito.junit.jupiter.MockitoExtension;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.visionstock.dto.ProductUpdateDTO;
 import com.visionstock.dto.ValidationRequestDTO;
@@ -9,24 +31,6 @@ import com.visionstock.model.inventory.Product;
 import com.visionstock.model.inventory.ValidationRequest;
 import com.visionstock.repository.ProductRepository;
 import com.visionstock.repository.ValidationRequestRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.math.BigDecimal;
-import java.time.Instant;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class ValidationServiceTest {
@@ -61,8 +65,7 @@ class ValidationServiceTest {
         validationService = new ValidationService(
                 validationRequestRepository,
                 productRepository,
-                objectMapper
-        );
+                objectMapper);
 
         testProduct = Product.builder()
                 .id(productId)
@@ -88,8 +91,10 @@ class ValidationServiceTest {
                 .productId(productId)
                 .requestedBy(userId)
                 .status(ValidationStatus.PENDING)
-                .originalData("{\"id\":\"" + productId + "\",\"descricao\":\"Camiseta Azul\",\"cor\":\"Azul\",\"tamanho\":\"M\",\"precoVenda\":\"89.90\"}")
-                .newData("{\"id\":\"" + productId + "\",\"descricao\":\"Camiseta Verde\",\"cor\":\"Verde\",\"tamanho\":\"M\",\"precoVenda\":\"89.90\"}")
+                .originalData("{\"id\":\"" + productId
+                        + "\",\"descricao\":\"Camiseta Azul\",\"cor\":\"Azul\",\"tamanho\":\"M\",\"precoVenda\":\"89.90\"}")
+                .newData("{\"id\":\"" + productId
+                        + "\",\"descricao\":\"Camiseta Verde\",\"cor\":\"Verde\",\"tamanho\":\"M\",\"precoVenda\":\"89.90\"}")
                 .requestedAt(Instant.now())
                 .build();
     }
@@ -124,9 +129,9 @@ class ValidationServiceTest {
 
         when(productRepository.findById(productId)).thenReturn(Optional.empty());
 
-        assertThrows(ResourceNotFoundException.class, 
-            () -> validationService.createValidationRequest(productId, updateDTO, userId));
-        
+        assertThrows(ResourceNotFoundException.class,
+                () -> validationService.createValidationRequest(productId, updateDTO, userId));
+
         verify(validationRequestRepository, never()).save(any());
     }
 
@@ -134,7 +139,7 @@ class ValidationServiceTest {
     @DisplayName("getPendingRequests should return list of pending requests")
     void getPendingRequests_shouldReturnList() throws Exception {
         List<ValidationRequest> pendingRequests = Arrays.asList(testRequest);
-        
+
         when(validationRequestRepository.findByStatusOrderByRequestedAtAsc(ValidationStatus.PENDING))
                 .thenReturn(pendingRequests);
 
@@ -149,7 +154,7 @@ class ValidationServiceTest {
     @DisplayName("getRequestsByProduct should return requests for specific product")
     void getRequestsByProduct_shouldReturnProductRequests() throws Exception {
         List<ValidationRequest> requests = Arrays.asList(testRequest);
-        
+
         when(validationRequestRepository.findByProductIdOrderByRequestedAtDesc(productId))
                 .thenReturn(requests);
 
@@ -164,7 +169,7 @@ class ValidationServiceTest {
     @DisplayName("approveRequest should update product and mark request as approved")
     void approveRequest_shouldApproveAndUpdateProduct() throws Exception {
         String reviewNote = "Alteração aprovada";
-        
+
         when(validationRequestRepository.findById(requestId)).thenReturn(Optional.of(testRequest));
         when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
         when(validationRequestRepository.save(any(ValidationRequest.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -203,7 +208,7 @@ class ValidationServiceTest {
     @DisplayName("rejectRequest should mark request as rejected without changing product")
     void rejectRequest_shouldRejectWithoutUpdatingProduct() {
         String reviewNote = "Alteração não aprovada";
-        
+
         when(validationRequestRepository.findById(requestId)).thenReturn(Optional.of(testRequest));
         when(validationRequestRepository.save(any(ValidationRequest.class))).thenAnswer(inv -> inv.getArgument(0));
 
