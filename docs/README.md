@@ -16,6 +16,7 @@ Documentação completa do projeto VisionStock, um sistema de gestão de estoque
 | [APPROVAL_WORKFLOW.md](./APPROVAL_WORKFLOW.md) | Documentação técnica do Approval Workflow |
 | [APPROVAL_WORKFLOW_TESTS.md](./APPROVAL_WORKFLOW_TESTS.md) | Guia de testes do Approval Workflow |
 | [GIT_CONFLICT_RESOLUTION_TUTORIAL.md](./GIT_CONFLICT_RESOLUTION_TUTORIAL.md) | Tutorial de resolução de conflitos Git |
+| [FULL_STACK_SETUP_TUTORIAL.md](./FULL_STACK_SETUP_TUTORIAL.md) | Tutorial completo de setup (banco + backend + mobile) |
 | [CHANGELOG.md](./CHANGELOG.md) | Histórico de mudanças do projeto |
 
 ## 🚀 Início Rápido
@@ -48,7 +49,8 @@ open http://localhost:8080/swagger-ui.html
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │   Frontend      │────▶│   Backend       │────▶│   PostgreSQL    │
-│   (Flutter)     │     │   (Spring Boot) │     │                 │
+│ (React Native/  │     │   (Spring Boot) │     │                 │
+│      Expo)      │     │                 │     │                 │
 └─────────────────┘     └────────┬────────┘     └─────────────────┘
                                  │
                                  ▼

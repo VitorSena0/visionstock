@@ -1,7 +1,7 @@
 # VisionStock - Visão Completa do Sistema
 
-**Versão:** 1.2.0  
-**Data:** 14 de fevereiro de 2026  
+**Versão:** 1.3.0  
+**Data:** 15 de fevereiro de 2026  
 **Tipo:** Documentação Técnica Completa
 
 ---
@@ -51,11 +51,12 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    FRONTEND (Flutter)                        │
-│  • Offline-First com SQLite local                           │
-│  • Scanner de códigos de barras                             │
-│  • Câmera para fotos de etiquetas                           │
-│  • Interface mobile-first                                    │
+│          FRONTEND MOBILE (React Native + Expo)               │
+│  • Expo Router (file-based routing)                          │
+│  • Offline-First com SQLite local (expo-sqlite)             │
+│  • Estado global: Zustand + cache com TanStack Query         │
+│  • JWT em SecureStore + interceptors Axios                   │
+│  • Interface mobile-first com NativeWind                     │
 └────────────────────┬────────────────────────────────────────┘
                      │ REST APIs (JSON)
                      │ Sync quando online
@@ -121,6 +122,45 @@
 - **DTO Pattern** (separação entre entidades e DTOs de transporte)
 - **Repository Pattern** (abstração de acesso a dados)
 - **Offline-First Pattern** (dados locais primeiro, sync depois)
+
+### Frontend Mobile (React Native + Expo)
+
+O frontend mobile atual está em `mobile/vision-stock-mobile` e utiliza **Expo Managed Workflow**.
+
+**Stack implementada:**
+- `expo-router` para navegação por arquivos (`app/`)
+- `nativewind` para estilização baseada em classes utilitárias
+- `axios` para comunicação HTTP com backend
+- `expo-secure-store` para persistência segura do JWT
+- `zustand` para estado de autenticação
+- `@tanstack/react-query` para cache/sincronização
+- `expo-sqlite` para persistência local e fila de sync
+
+**Estrutura principal:**
+```text
+mobile/vision-stock-mobile/
+├── app/
+│   ├── (auth)/login.tsx
+│   ├── (tabs)/index.tsx
+│   └── _layout.tsx
+├── src/
+│   ├── services/api.ts
+│   ├── store/authStore.ts
+│   ├── database/index.ts
+│   └── components/ui/
+├── metro.config.js
+├── tailwind.config.js
+└── .env
+```
+
+**Fluxo de autenticação no app:**
+1. Usuário envia `email` e `password` em `POST /api/v1/auth/login`.
+2. Backend retorna `token`, `role`, `userId`.
+3. App salva `token` e metadados do usuário no SecureStore.
+4. Interceptor Axios injeta `Authorization: Bearer <token>` automaticamente.
+5. Em `401`, sessão local é limpa e usuário é redirecionado ao login.
+
+**Observação operacional:** o app exibe a URL de API ativa na tela de login para diagnóstico rápido de conectividade (`EXPO_PUBLIC_API_URL`).
 
 ---
 
@@ -493,6 +533,8 @@ com.visionstock
   - `POST`/`PUT` em `/api/v1/products` → `USER` ou `ADMIN`
 - **Comportamento stateless:** CSRF desabilitado para API e sessão `STATELESS`.
 - **Erros de segurança padronizados:** respostas JSON para `401` e `403`.
+- **Acesso em rede local:** backend configurado com `server.address=0.0.0.0` e `server.port` via variável de ambiente.
+- **Tratamento de erros HTTP de entrada:** `400` para body inválido/ausente e `405` para método não permitido.
 
 ---
 
@@ -1018,6 +1060,12 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, UU
 }
 ```
 
+#### Erros esperados em autenticação
+
+- `401 Unauthorized` para credenciais inválidas.
+- `400 Bad Request` para payload ausente/inválido.
+- `405 Method Not Allowed` quando método HTTP não suportado (ex.: `GET /api/v1/auth/login`).
+
 ---
 
 ### ProductController
@@ -1412,6 +1460,12 @@ Usuario tenta atualizar produto
 3. Sucesso → sync_status = SYNCED
 4. Conflito → sync_status = CONFLITO, notifica usuário
 
+**Implementação atual (mobile):**
+- Base local SQLite inicializada com `expo-sqlite`
+- Fila local `sync_queue` criada para operações pendentes
+- Estrutura de cache e sincronização preparada com TanStack Query
+- Etapas futuras: replicação bidirecional completa de produtos e movimentações
+
 ### 7. 📊 Auditoria e Logs
 
 **Audit Trail:**
@@ -1427,6 +1481,21 @@ Usuario tenta atualizar produto
 ---
 
 ## 🛠️ Tecnologias Utilizadas
+
+### Frontend Mobile
+
+| Tecnologia | Versão | Uso |
+|------------|--------|-----|
+| **React Native** | 0.81.5 | Base do aplicativo mobile |
+| **Expo SDK** | 54 | Runtime e tooling mobile |
+| **Expo Router** | 6.x | Navegação file-based |
+| **TypeScript** | 5.9.x | Tipagem estática |
+| **NativeWind** | 4.x | Estilização utilitária |
+| **Axios** | 1.x | Cliente HTTP |
+| **Zustand** | 5.x | Estado global de autenticação |
+| **TanStack Query** | 5.x | Cache e sync de dados |
+| **Expo Secure Store** | 15.x | Armazenamento seguro do JWT |
+| **Expo SQLite** | 16.x | Persistência offline local |
 
 ### Backend
 
@@ -1742,6 +1811,7 @@ ADMIN         Frontend    ValidationController ValidationService  ProductService
 - [Guia de Testes](./TESTING.md)
 - [Atualização da Suite de Testes](./TEST_SUITE_UPDATE.md)
 - [Troubleshooting](./TROUBLESHOOTING.md)
+- [Tutorial Full Stack (Banco + Backend + Mobile)](./FULL_STACK_SETUP_TUTORIAL.md)
 - [Changelog](./CHANGELOG.md)
 
 ---
@@ -1752,6 +1822,6 @@ ADMIN         Frontend    ValidationController ValidationService  ProductService
 
 ---
 
-**Última Atualização:** 14 de fevereiro de 2026  
-**Versão do Documento:** 1.2.0  
+**Última Atualização:** 15 de fevereiro de 2026  
+**Versão do Documento:** 1.3.0  
 **Autor:** Equipe VisionStock

@@ -2,9 +2,32 @@
 
 Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 
-## [Unreleased] - 2026-02-14
+## [Unreleased] - 2026-02-15
 
 ### Adicionado
+
+- **Etapa Mobile 1 - Base React Native (Expo) Offline-First**
+  - Estrutura inicial do app em `mobile/vision-stock-mobile` com:
+    - `Expo Router` (rotas por arquivo)
+    - `TypeScript` com tipagem estrita
+    - `Axios` com interceptors de autenticação
+    - `Zustand` para sessão (`token`, `user`, `login`, `logout`, `hydrate`)
+    - `@tanstack/react-query` no layout raiz
+    - `expo-secure-store` para persistir JWT
+    - `expo-sqlite` com bootstrap inicial da base local e tabela `sync_queue`
+  - Tela real de login integrada ao backend (`POST /api/v1/auth/login`)
+  - Home inicial autenticada com logout
+  - Componentes UI base (`AppButton`, `AppInput`) e design system com NativeWind
+  - Arquivos de configuração mobile adicionados:
+    - `babel.config.js`, `tailwind.config.js`, `metro.config.js`, `global.css`, `.env.example`
+
+- **Observabilidade de conexão no app mobile**
+  - Exibição da URL de API ativa na tela de login (`API: ...`)
+  - Indicador quando `EXPO_PUBLIC_API_URL` não foi carregada do `.env`
+  - Mensagens de erro de login diferenciando:
+    - credencial inválida (`401`)
+    - falha de conectividade com API (timeout/rede)
+    - outros erros HTTP
 
 - **Etapa 6 - Segurança e Autenticação com JWT (Spring Security 6)**
   - Dependências de segurança adicionadas ao backend:
@@ -62,7 +85,27 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
   - Cenários práticos de uso do approval workflow
   - Stack tecnológica completa
 
+- **Novo tutorial end-to-end de setup**
+  - `docs/FULL_STACK_SETUP_TUTORIAL.md`
+  - Passo a passo completo para banco, backend e mobile (React Native Expo)
+  - Inclui validação com `curl` e troubleshooting de rede/JWT/estilização
+  - Template de ambiente backend adicionado em `backend/.env.example`
+
 ### Alterado
+
+- **Backend configurado para acesso em rede local**
+  - `server.address=${SERVER_ADDRESS:0.0.0.0}`
+  - `server.port=${PORT:8080}`
+  - Permite acesso do app mobile físico na mesma rede (LAN)
+
+- **Normalização da URL de API no app mobile**
+  - Base URL agora remove barra final e sufixo `/api/v1` quando necessário
+  - Prefixo `/api/v1` aplicado de forma centralizada (`withApiPrefix`)
+  - Evita erro de rota duplicada (`/api/v1/api/v1/...`)
+
+- **Documentação principal atualizada para estado real do projeto**
+  - `docs/COMPLETE_SYSTEM_OVERVIEW.md` passou a refletir frontend atual em React Native (Expo)
+  - Arquitetura macro e stack tecnológica revisadas
 
 - **ProductController atualizado para identidade via JWT**
   - Removidos parâmetros manuais de identificação do usuário em update/create
@@ -87,6 +130,16 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 
 ### Corrigido
 
+- **Tratamento de erro HTTP para métodos/requests inválidos no backend**
+  - `GET /api/v1/auth/login` não é mais reportado como erro genérico interno
+  - `GlobalExceptionHandler` agora mapeia:
+    - `HttpRequestMethodNotSupportedException` → `405 Method Not Allowed`
+    - `HttpMessageNotReadableException` → `400 Bad Request`
+
+- **Configuração NativeWind corrigida no app mobile**
+  - Ajuste de `babel + metro + tailwind + global.css`
+  - Corrige renderização “sem estilo” (UI estática sem classes aplicadas)
+
 - **Respostas de erro de autenticação/autorização em JSON limpo**
   - `401 Unauthorized` agora retorna payload padronizado (sem stacktrace padrão do Spring)
   - `403 Forbidden` agora retorna payload padronizado
@@ -106,6 +159,10 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
   - Justificativa: ObjectMapper é leve, rápido e não faz IO
 
 ### Métricas
+
+- **Validação mobile (Etapa 1)**
+  - ✅ `npx tsc --noEmit` executado com sucesso em `mobile/vision-stock-mobile`
+  - ✅ `npx expo export --platform android --clear` executado com sucesso
 
 - **Validação pós-Etapa 6**
   - ✅ `mvn -q -DskipTests compile` executado com sucesso
