@@ -32,7 +32,14 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Precisamos de acesso a galeria para selecionar etiquetas.",
+          "cameraPermission": "Precisamos de acesso a camera para escanear etiquetas."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

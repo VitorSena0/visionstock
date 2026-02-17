@@ -7,9 +7,11 @@ import com.visionstock.controller.ScanController;
 import com.visionstock.controller.ValidationController;
 import com.visionstock.dto.AuthResponseDTO;
 import com.visionstock.dto.LoginDTO;
+import com.visionstock.dto.ProductAdminDTO;
 import com.visionstock.dto.ProductResponseDTO;
 import com.visionstock.service.AuthService;
 import com.visionstock.service.GeminiService;
+import com.visionstock.service.ProductImageService;
 import com.visionstock.service.ProductService;
 import com.visionstock.service.ValidationService;
 import org.junit.jupiter.api.DisplayName;
@@ -66,6 +68,9 @@ class SecurityAccessTest {
     private ValidationService validationService;
 
     @MockBean
+    private ProductImageService productImageService;
+
+    @MockBean
     private GeminiService geminiService;
 
     @MockBean
@@ -113,6 +118,66 @@ class SecurityAccessTest {
     }
 
     @Test
+    @DisplayName("GET /api/v1/products should return 401 without authentication")
+    void listProducts_withoutAuthentication_shouldReturn401() throws Exception {
+        mockMvc.perform(get("/api/v1/products"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/products/{productId}/images/{imageId}/content should return 401 without authentication")
+    void productImageContent_withoutAuthentication_shouldReturn401() throws Exception {
+        mockMvc.perform(get("/api/v1/products/{productId}/images/{imageId}/content",
+                        UUID.randomUUID(), UUID.randomUUID()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/products should return public payload for USER")
+    void listProducts_withUserRole_shouldHideFinancialFields() throws Exception {
+        ProductResponseDTO response = ProductResponseDTO.builder()
+                .id(UUID.randomUUID())
+                .descricao("Produto USER")
+                .precoVenda(new BigDecimal("89.90"))
+                .quantidadeAtual(4)
+                .build();
+
+        when(productService.listProductsForUser()).thenReturn(List.of(response));
+
+        mockMvc.perform(get("/api/v1/products")
+                        .with(authentication(authenticatedUserToken("USER"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].descricao").value("Produto USER"))
+                .andExpect(jsonPath("$[0].precoVenda").value(89.90))
+                .andExpect(jsonPath("$[0].precoCusto").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/products should include financial payload for ADMIN")
+    void listProducts_withAdminRole_shouldIncludeFinancialFields() throws Exception {
+        ProductAdminDTO response = ProductAdminDTO.builder()
+                .id(UUID.randomUUID())
+                .descricao("Produto ADMIN")
+                .precoCusto(new BigDecimal("44.00"))
+                .precoVenda(new BigDecimal("79.90"))
+                .markupPercentual(new BigDecimal("81.59"))
+                .build();
+
+        when(productService.listProductsForAdmin()).thenReturn(List.of(response));
+
+        mockMvc.perform(get("/api/v1/products")
+                        .with(authentication(authenticatedUserToken("ADMIN"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].descricao").value("Produto ADMIN"))
+                .andExpect(jsonPath("$[0].precoCusto").value(44.00))
+                .andExpect(jsonPath("$[0].markupPercentual").value(81.59));
+    }
+
+    @Test
     @DisplayName("GET /api/v1/validation should return 403 for USER role")
     void validation_withUserRole_shouldReturn403() throws Exception {
         mockMvc.perform(get("/api/v1/validation")
@@ -129,6 +194,16 @@ class SecurityAccessTest {
 
         mockMvc.perform(get("/api/v1/validation")
                         .with(authentication(authenticatedUserToken("ADMIN"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/validation/my should allow USER role")
+    void validationMy_withUserRole_shouldAllow() throws Exception {
+        when(validationService.getRequestsByRequester(any(UUID.class))).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/validation/my")
+                        .with(authentication(authenticatedUserToken("USER"))))
                 .andExpect(status().isOk());
     }
 

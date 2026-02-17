@@ -4,10 +4,10 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppButton } from '../../src/components/ui/AppButton';
 import { AppInput } from '../../src/components/ui/AppInput';

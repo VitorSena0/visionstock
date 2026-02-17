@@ -1,6 +1,7 @@
 package com.visionstock.dto;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.visionstock.model.enums.ValidationChangeType;
 import com.visionstock.model.enums.ValidationStatus;
 import lombok.*;
 
@@ -39,6 +40,8 @@ public class ValidationRequestDTO {
      * Current status: PENDING, APPROVED, or REJECTED
      */
     private ValidationStatus status;
+
+    private ValidationChangeType changeType;
 
     /**
      * JSON snapshot of product data BEFORE the requested changes.

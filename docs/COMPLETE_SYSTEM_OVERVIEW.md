@@ -1,7 +1,7 @@
 # VisionStock - Visão Completa do Sistema
 
-**Versão:** 1.3.0  
-**Data:** 15 de fevereiro de 2026  
+**Versão:** 1.6.0  
+**Data:** 17 de fevereiro de 2026  
 **Tipo:** Documentação Técnica Completa
 
 ---
@@ -130,11 +130,16 @@ O frontend mobile atual está em `mobile/vision-stock-mobile` e utiliza **Expo M
 **Stack implementada:**
 - `expo-router` para navegação por arquivos (`app/`)
 - `nativewind` para estilização baseada em classes utilitárias
+- `tailwind-merge` para composição segura de classes utilitárias
 - `axios` para comunicação HTTP com backend
 - `expo-secure-store` para persistência segura do JWT
 - `zustand` para estado de autenticação
 - `@tanstack/react-query` para cache/sincronização
 - `expo-sqlite` para persistência local e fila de sync
+- `expo-image-picker` para câmera/galeria no fluxo de scan
+- `expo-image-manipulator` para normalização de imagem antes do upload
+- `expo-network` para detecção de conectividade no motor de sync
+- `react-hook-form` + `zod` para formulário de cadastro com validação
 
 **Estrutura principal:**
 ```text
@@ -142,11 +147,25 @@ mobile/vision-stock-mobile/
 ├── app/
 │   ├── (auth)/login.tsx
 │   ├── (tabs)/index.tsx
+│   ├── product/[id]/
+│       ├── index.tsx
+│       └── edit.tsx
 │   └── _layout.tsx
 ├── src/
 │   ├── services/api.ts
+│   ├── services/syncService.ts
+│   ├── services/imageContentService.ts
+│   ├── services/queryClient.ts
 │   ├── store/authStore.ts
 │   ├── database/index.ts
+│   ├── database/productRepository.ts
+│   ├── database/productImageRepository.ts
+│   ├── database/syncQueueRepository.ts
+│   ├── types/product.ts
+│   ├── components/ImagePickerButton.tsx
+│   ├── components/ProductForm.tsx
+│   ├── utils/imageUpload.ts
+│   ├── utils/productImage.ts
 │   └── components/ui/
 ├── metro.config.js
 ├── tailwind.config.js
@@ -161,6 +180,16 @@ mobile/vision-stock-mobile/
 5. Em `401`, sessão local é limpa e usuário é redirecionado ao login.
 
 **Observação operacional:** o app exibe a URL de API ativa na tela de login para diagnóstico rápido de conectividade (`EXPO_PUBLIC_API_URL`).
+
+**Fluxo principal implementado (Etapas 7 + 8.1/8.2 + 8.2.3):**
+1. Home carrega instantaneamente a lista local (SQLite) e busca por caractere em tempo real.
+2. Usuário pode escanear etiqueta (`POST /api/v1/scan`) ou abrir cadastro manual.
+3. Modal de rascunho permite revisar campos e anexar/remover imagem antes de salvar.
+4. Cadastro envia `POST /api/v1/products`; foto do rascunho é auto-anexada no produto.
+5. Detalhe do produto permite anexar, remover e definir imagem principal.
+6. Botão `Editar` abre formulário completo (campos textuais/financeiros) e ajuste de estoque dedicado.
+7. Operações sem internet entram em fila local (`sync_queue`) e são enviadas no próximo `pull`.
+8. Em `429` do Gemini, o app exibe mensagem amigável de limite temporário e respeita `Retry-After` quando disponível.
 
 ---
 
@@ -257,7 +286,7 @@ CREATE TABLE inventory.products (
     -- Financeiro
     preco_custo DECIMAL(10,2),                   -- Custo de compra
     preco_venda DECIMAL(10,2) NOT NULL,          -- Preço de venda
-    markup_percentual DECIMAL(5,2) GENERATED ALWAYS AS (
+    markup_percentual DECIMAL(10,2) GENERATED ALWAYS AS (
         CASE 
             WHEN preco_custo IS NOT NULL AND preco_custo > 0 
             THEN ((preco_venda - preco_custo) / preco_custo * 100)
@@ -298,17 +327,20 @@ CREATE TABLE inventory.products (
 
 **Status Validação:**
 - `OK`: Produto validado e pronto para venda
-- `PENDENTE`: Aguardando aprovação (workflow)
 - `REVIEW`: Precisa revisão manual
 - `REJECTED`: Rejeitado na validação
+
+**Observação importante:** no endpoint de scan, `statusValidacao="PENDENTE"` é usado apenas no
+rascunho retornado pela IA e não representa registro persistido em `inventory.products`.
 
 #### Tabela: `inventory.validation_queue` 🚦 **APPROVAL WORKFLOW**
 ```sql
 CREATE TABLE inventory.validation_queue (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     product_id UUID NOT NULL REFERENCES inventory.products(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES auth.users(id),      -- Quem solicitou
-    status VARCHAR(20) DEFAULT 'PENDENTE',
+    user_id UUID NOT NULL REFERENCES auth.users(id),       -- Quem solicitou
+    status VARCHAR(20) DEFAULT 'PENDING',
+    change_type VARCHAR(30) DEFAULT 'PRODUCT_FIELDS',      -- Tipo da mudança
     dados_anteriores JSONB NOT NULL,                       -- Estado anterior
     dados_novos JSONB NOT NULL,                            -- Estado proposto
     observacao TEXT,
@@ -318,17 +350,68 @@ CREATE TABLE inventory.validation_queue (
     updated_at TIMESTAMP WITH TIME ZONE,
     deleted_at TIMESTAMP WITH TIME ZONE,
     
-    CONSTRAINT chk_validation_status CHECK (status IN ('PENDENTE', 'APROVADO', 'REJEITADO'))
+    CONSTRAINT chk_validation_status CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED'))
 );
 ```
 
 **Propósito:** Fila de aprovação para mudanças feitas por estoquistas (USER)
+com suporte a tipos de mudança:
+- `PRODUCT_FIELDS`
+- `STOCK_ADJUSTMENT`
+- `PRODUCT_IMAGES`
 
 **Fluxo:**
-1. USER edita produto → Criado registro com `status='PENDENTE'`
+1. USER solicita alteração → Criado registro com `status='PENDING'`
 2. ADMIN visualiza fila → Vê `dados_anteriores` vs `dados_novos`
-3. ADMIN aprova → Produto é atualizado, `status='APROVADO'`
-4. ADMIN rejeita → Produto NÃO é atualizado, `status='REJEITADO'`
+3. ADMIN aprova → Produto/imagem/estoque é atualizado, `status='APPROVED'`
+4. ADMIN rejeita → Alteração não é aplicada, `status='REJECTED'`
+
+#### Tabela: `inventory.product_images` 🖼️ **MÍDIA ESTRUTURADA**
+```sql
+CREATE TABLE inventory.product_images (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_id UUID NOT NULL REFERENCES inventory.products(id) ON DELETE CASCADE,
+    file_name VARCHAR(255),
+    content_type VARCHAR(100) NOT NULL,
+    file_size BIGINT NOT NULL,
+    image_data BYTEA NOT NULL,                         -- Binário oficial no PostgreSQL
+    sha256 VARCHAR(64),
+    width INTEGER,
+    height INTEGER,
+    is_primary BOOLEAN DEFAULT false,
+    sort_order INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP WITH TIME ZONE,
+    created_by UUID REFERENCES auth.users(id),
+    updated_by UUID REFERENCES auth.users(id)
+);
+```
+
+**Regra de negócio:** cada produto pode ter múltiplas imagens, mas apenas uma `is_primary=true`.
+
+#### Tabela: `inventory.validation_image_staging` 📥 **STAGING DE IMAGEM PARA APROVAÇÃO**
+```sql
+CREATE TABLE inventory.validation_image_staging (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    validation_request_id UUID NOT NULL REFERENCES inventory.validation_queue(id) ON DELETE CASCADE,
+    operation VARCHAR(30) NOT NULL,                    -- ADD, SET_PRIMARY, DELETE
+    target_image_id UUID,
+    file_name VARCHAR(255),
+    content_type VARCHAR(100),
+    file_size BIGINT,
+    image_data BYTEA,
+    sha256 VARCHAR(64),
+    width INTEGER,
+    height INTEGER,
+    is_primary BOOLEAN,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP WITH TIME ZONE,
+    created_by UUID REFERENCES auth.users(id),
+    updated_by UUID REFERENCES auth.users(id)
+);
+```
 
 ---
 
@@ -470,6 +553,8 @@ CREATE INDEX idx_stock_movements_data ON finance.stock_movements(data_movimento 
 
 ```
 com.visionstock
+├── config/             # Configurações de bootstrap
+│   └── DataInitializer.java
 ├── controller/          # REST Controllers
 │   ├── AuthController.java
 │   ├── ProductController.java
@@ -479,16 +564,21 @@ com.visionstock
 │   ├── AuthService.java
 │   ├── ProductService.java
 │   ├── ValidationService.java
+│   ├── ProductImageService.java
 │   └── GeminiService.java
 ├── repository/         # Data Access (Spring Data JPA)
 │   ├── UserRepository.java
 │   ├── ProductRepository.java
+│   ├── ProductImageRepository.java
 │   ├── ValidationRequestRepository.java
+│   ├── ValidationImageStagingRepository.java
 │   └── StockMovementRepository.java
 ├── model/              # JPA Entities
 │   ├── inventory/
 │   │   ├── Product.java
-│   │   └── ValidationRequest.java
+│   │   ├── ValidationRequest.java
+│   │   ├── ProductImage.java
+│   │   └── ValidationImageStaging.java
 │   ├── finance/
 │   │   └── StockMovement.java
 │   ├── auth/
@@ -496,6 +586,8 @@ com.visionstock
 │   └── enums/
 │       ├── UserRole.java
 │       ├── ValidationStatus.java
+│       ├── ValidationChangeType.java
+│       ├── ImageOperationType.java
 │       └── MovementType.java
 ├── dto/                # Data Transfer Objects
 │   ├── LoginDTO.java
@@ -505,6 +597,9 @@ com.visionstock
 │   ├── ProductResponseDTO.java
 │   ├── ProductUpdateDTO.java
 │   ├── ProductAdminDTO.java
+│   ├── ProductImageMetadataDTO.java
+│   ├── StockAdjustmentDTO.java
+│   ├── ActionResponseDTO.java
 │   ├── ValidationDecisionDTO.java
 │   └── ValidationRequestDTO.java
 ├── security/           # Autenticação e Autorização
@@ -519,7 +614,9 @@ com.visionstock
     ├── ApiErrorResponse.java
     ├── GlobalExceptionHandler.java
     ├── ResourceNotFoundException.java
-    └── DuplicateProductException.java
+    ├── DuplicateProductException.java
+    ├── ExternalServiceRateLimitException.java
+    └── ExternalServiceException.java
 ```
 
 ### Camada de Segurança (Spring Security 6 + JWT)
@@ -529,12 +626,18 @@ com.visionstock
 - **Autorização por rota:**
   - `/api/v1/auth/**` → público
   - `/api/v1/scan` → `USER` ou `ADMIN`
-  - `/api/v1/validation/**` → `ADMIN`
-  - `POST`/`PUT` em `/api/v1/products` → `USER` ou `ADMIN`
+  - `/api/v1/validation/my` → `USER` ou `ADMIN`
+  - `/api/v1/validation/**` (exceto `/my`) → `ADMIN`
+  - `GET`/`POST`/`PUT` em `/api/v1/products` → `USER` ou `ADMIN`
+  - `POST /api/v1/products/{id}/stock-adjustments` → `USER` ou `ADMIN`
+  - `GET|POST|PATCH|DELETE` em `/api/v1/products/{id}/images/**` → `USER` ou `ADMIN`
 - **Comportamento stateless:** CSRF desabilitado para API e sessão `STATELESS`.
 - **Erros de segurança padronizados:** respostas JSON para `401` e `403`.
 - **Acesso em rede local:** backend configurado com `server.address=0.0.0.0` e `server.port` via variável de ambiente.
 - **Tratamento de erros HTTP de entrada:** `400` para body inválido/ausente e `405` para método não permitido.
+- **Bootstrap ADMIN local (opcional):**
+  - `DataInitializer` ativo apenas nos perfis `dev`/`local`
+  - Controlado por `app.seed.admin.enabled` e variáveis `SEED_ADMIN_*`
 
 ---
 
@@ -732,6 +835,39 @@ public class ProductAdminDTO {
 }
 ```
 
+#### ProductCreateDTO.java
+```java
+@Data
+@Builder
+public class ProductCreateDTO {
+    @NotNull
+    private UUID id;
+
+    private String referencia;
+
+    @NotBlank
+    private String descricao;
+
+    private String tamanho;
+    private String cor;
+    private String marca;
+    private String codigoBarras;
+
+    private BigDecimal precoCusto;     // Opcional
+
+    @NotNull
+    @DecimalMin("0.0")
+    private BigDecimal precoVenda;     // Obrigatório
+
+    @NotNull
+    @Min(0)
+    private Integer quantidadeInicial; // Obrigatório
+
+    @Min(0)
+    private Integer quantidadeMinima;  // Opcional
+}
+```
+
 #### ValidationRequestDTO.java
 ```java
 @Data
@@ -765,17 +901,21 @@ public class ValidationRequestDTO {
 
 **Métodos Principais:**
 
-##### `createProduct(ProductCreateDTO dto)`
+##### `createProduct(ProductCreateDTO dto, UUID createdBy)`
 ```java
 @Transactional
-public ProductResponseDTO createProduct(ProductCreateDTO dto) {
-    // 1. Verifica duplicatas (ID, código de barras)
-    // 2. Cria entidade Product
-    // 3. Se quantidadeInicial > 0: Cria StockMovement (ENTRADA)
-    // 4. Salva no banco
-    // 5. Retorna ProductResponseDTO
+public ProductResponseDTO createProduct(ProductCreateDTO dto, UUID createdBy) {
+    // 1. Verifica duplicatas (ID, referencia, codigo de barras)
+    // 2. Valida faixa de markup (precoCusto/precoVenda)
+    // 3. Cria entidade Product com:
+    //    precoCusto, precoVenda, quantidadeInicial e quantidadeMinima
+    // 4. Define createdBy/updatedBy a partir do usuário autenticado
+    // 5. Se quantidadeInicial > 0: cria StockMovement (ENTRADA)
+    // 6. Salva com saveAndFlush e retorna ProductResponseDTO
 }
 ```
+
+**Regra:** cadastro (`POST /products`) grava diretamente em `inventory.products`; não cria item em `validation_queue`.
 
 ##### `updateProduct(UUID id, ProductUpdateDTO dto, UserRole role, UUID userId)`
 ```java
@@ -785,9 +925,10 @@ public ProductUpdateResponse updateProduct(UUID id, ProductUpdateDTO dto, UserRo
     
     if (role == UserRole.ADMIN) {
         // ADMIN: Atualiza diretamente
+        // - valida conflitos de referencia/codigoBarras (excluindo o proprio ID)
         applyChanges(product, dto);
         product.setUpdatedBy(userId);
-        productRepository.save(product);
+        productRepository.saveAndFlush(product);
         
         return ProductUpdateResponse.builder()
             .status("UPDATED")
@@ -900,33 +1041,15 @@ public Product rejectRequest(UUID requestId, UUID adminId, String reviewNote) {
 ##### `extractDataFromImage(MultipartFile image)`
 ```java
 public ProductResponseDTO extractDataFromImage(MultipartFile image) {
-    try {
-        // 1. Converte imagem para Base64
-        String base64Image = encodeImageToBase64(image);
-        
-        // 2. Monta prompt para Gemini
-        String prompt = buildSystemInstruction();
-        
-        // 3. Chama API Gemini
-        String geminiResponse = callGeminiAPI(base64Image, prompt);
-        
-        // 4. Parse da resposta JSON
-        ProductResponseDTO dto = parseGeminiResponse(geminiResponse);
-        
-        // 5. Define status IA
-        dto.setStatusIa("IA_SUGERIDO");
-        dto.setStatusValidacao("PENDENTE");
-        
-        return dto;
-        
-    } catch (Exception e) {
-        logger.error("Error extracting data from image", e);
-        
-        return ProductResponseDTO.builder()
-            .statusIa("ERRO_IA")
-            .statusValidacao("PENDENTE")
-            .build();
-    }
+    String base64Image = encodeImageToBase64(image);
+    Map<String, Object> body = buildRequest(base64Image, image.getContentType());
+
+    // Retry com backoff para 429/5xx (ate 3 tentativas)
+    String geminiResponse = callGeminiWithRetry(body);
+
+    // Parse bem-sucedido -> rascunho IA_SUGERIDO
+    // Parse invalido -> DTO com statusIa=ERRO_IA (sem persistencia)
+    return parseResponse(geminiResponse);
 }
 ```
 
@@ -958,18 +1081,18 @@ Retorne APENAS um JSON válido sem markdown:
 ```java
 @Repository
 public interface ProductRepository extends JpaRepository<Product, UUID> {
-    
+
+    Optional<Product> findByCodigoBarras(String codigoBarras);
     boolean existsByCodigoBarras(String codigoBarras);
-    
-    Optional<Product> findByReferencia(String referencia);
-    
-    List<Product> findByStatusValidacao(String status);
-    
-    @Query("SELECT p FROM Product p WHERE p.quantidadeAtual <= p.quantidadeMinima AND p.deletedAt IS NULL")
-    List<Product> findLowStockProducts();
-    
-    @Query("SELECT p FROM Product p WHERE p.syncStatus = 'PENDENTE' AND p.deletedAt IS NULL")
-    List<Product> findPendingSync();
+    boolean existsByCodigoBarrasAndIdNot(String codigoBarras, UUID id);
+    boolean existsByReferencia(String referencia);
+    boolean existsByReferenciaAndIdNot(String referencia, UUID id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM Product p WHERE p.id = :id")
+    Optional<Product> findByIdForUpdate(@Param("id") UUID id);
+
+    List<Product> findByDeletedAtIsNullOrderByUpdatedAtDesc();
 }
 ```
 
@@ -977,17 +1100,15 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
 ```java
 @Repository
 public interface ValidationRequestRepository extends JpaRepository<ValidationRequest, UUID> {
-    
+
     List<ValidationRequest> findByStatusOrderByRequestedAtAsc(ValidationStatus status);
-    
+
     List<ValidationRequest> findByProductIdOrderByRequestedAtDesc(UUID productId);
-    
-    List<ValidationRequest> findByRequestedBy(UUID userId);
-    
+
+    List<ValidationRequest> findByProductIdAndStatusOrderByRequestedAtDesc(
+            UUID productId, ValidationStatus status);
+
     Long countByStatus(ValidationStatus status);
-    
-    @Query("SELECT vr FROM ValidationRequest vr WHERE vr.status = 'PENDING' AND vr.deletedAt IS NULL")
-    List<ValidationRequest> findPendingQueue();
 }
 ```
 
@@ -995,13 +1116,7 @@ public interface ValidationRequestRepository extends JpaRepository<ValidationReq
 ```java
 @Repository
 public interface StockMovementRepository extends JpaRepository<StockMovement, UUID> {
-    
-    List<StockMovement> findByProductIdOrderByDataMovimentoDesc(UUID productId);
-    
-    List<StockMovement> findByTipoMovimento(String tipo);
-    
-    @Query("SELECT SUM(sm.quantidade) FROM StockMovement sm WHERE sm.productId = :productId AND sm.tipoMovimento = 'VENDA'")
-    Integer getTotalVendasByProduct(@Param("productId") UUID productId);
+    List<StockMovement> findByProductId(UUID productId);
 }
 ```
 
@@ -1021,6 +1136,9 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, UU
 
 #### `POST /api/v1/auth/register`
 **Registrar usuário (cadastro público de USER)**
+
+**Regra de negócio:** o registro público aceita apenas role `USER`.
+Para bootstrap local de `ADMIN`, usar `DataInitializer` com `SEED_ADMIN_ENABLED=true`.
 
 **Request:**
 ```json
@@ -1070,10 +1188,36 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, UU
 
 ### ProductController
 
+#### `GET /api/v1/products`
+**Listagem para sync/read (USER ou ADMIN)**
+
+- `USER` recebe payload público (`ProductResponseDTO`) sem `precoCusto`.
+- `ADMIN` recebe payload completo (`ProductAdminDTO`) com `precoCusto` e `markupPercentual`.
+
 #### `POST /api/v1/products`
 **Criar novo produto (USER ou ADMIN)**
 
 **Observação:** `createdBy` e `updatedBy` são preenchidos automaticamente a partir do `userId` do token JWT.
+
+**Request mínimo recomendado (cadastro manual):**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "referencia": "CAM-POLO-001",
+  "descricao": "Camiseta Polo Masculina",
+  "codigoBarras": "7891234567890",
+  "precoCusto": 45.00,
+  "precoVenda": 89.90,
+  "quantidadeInicial": 50,
+  "quantidadeMinima": 10,
+  "tamanho": "M",
+  "cor": "Azul Marinho",
+  "marca": "Vision"
+}
+```
+
+**Comportamento:** cria produto diretamente em `inventory.products` e, se `quantidadeInicial > 0`,
+gera movimentação inicial em `finance.stock_movements`.
 
 #### `PUT /api/v1/products/{id}`
 **Atualizar produto (com workflow de aprovação)**
@@ -1108,12 +1252,48 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, UU
 #### `GET /api/v1/products/{id}/validations`
 **Histórico de validações de um produto (ADMIN)**
 
+**Regra de fila de validação:**
+- `POST /products`: **não** cria `validation_queue`
+- `PUT /products/{id}` com `USER`: cria `validation_queue` (`PENDING_APPROVAL` na resposta)
+- `PUT /products/{id}` com `ADMIN`: aplica direto no produto
+
+#### `POST /api/v1/products/{id}/stock-adjustments`
+**Ajuste de estoque auditável (sem editar `quantidadeAtual` diretamente)**
+
+- `ADMIN`: aplica ajuste imediatamente e gera movimentação `AJUSTE` em `finance.stock_movements`.
+- `USER`: cria solicitação pendente para aprovação.
+
+#### `GET /api/v1/products/{id}/images`
+**Listar metadados das imagens do produto**
+
+#### `GET /api/v1/products/{id}/images/{imageId}/content`
+**Baixar/stream do conteúdo binário da imagem**
+
+#### `POST /api/v1/products/{id}/images` (multipart/form-data)
+**Anexar nova imagem ao produto**
+
+- Campo multipart obrigatório: `image`
+- Campo opcional: `isPrimary=true|false`
+- `ADMIN`: aplica direto
+- `USER`: envia para aprovação
+
+#### `PATCH /api/v1/products/{id}/images/{imageId}/primary`
+**Definir imagem principal**
+
+#### `DELETE /api/v1/products/{id}/images/{imageId}`
+**Remover imagem**
+
 ---
 
 ### ValidationController
 
 #### `GET /api/v1/validation`
 **Listar fila de validações pendentes (ADMIN)**
+
+#### `GET /api/v1/validation/my`
+**Listar solicitações do usuário autenticado (USER ou ADMIN)**
+
+Usado pelo mobile para reconciliar pendências locais após aprovação/rejeição.
 
 #### `POST /api/v1/validation/{id}/approve`
 **Aprovar solicitação de validação (ADMIN)**
@@ -1144,6 +1324,8 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, UU
 #### `POST /api/v1/scan`
 **Extrair dados de produto via foto de etiqueta (USER ou ADMIN)**
 
+**Importante:** este endpoint não persiste produto no banco. Ele retorna apenas um rascunho para revisão.
+
 **Request (multipart/form-data):**
 ```
 POST /api/v1/scan
@@ -1167,16 +1349,29 @@ image: [arquivo de imagem]
 }
 ```
 
-**Response em caso de erro (200 OK com status de erro):**
+**Response de erro de autenticação (`401 Unauthorized`):**
 ```json
 {
-  "statusIa": "ERRO_IA",
-  "statusValidacao": "PENDENTE",
-  "descricao": null,
-  "tamanho": null,
-  ...
+  "timestamp": "2026-02-17T03:00:29.146Z",
+  "status": 401,
+  "error": "Unauthorized",
+  "message": "Authentication is required to access this resource",
+  "path": "/api/v1/scan"
 }
 ```
+
+**Response de limite temporário da IA (`429 Too Many Requests`):**
+```json
+{
+  "timestamp": "2026-02-17T03:06:50.252Z",
+  "status": 429,
+  "error": "Too Many Requests",
+  "message": "Limite temporario da IA atingido. Aguarde alguns segundos e tente novamente.",
+  "path": "/api/v1/scan"
+}
+```
+
+Quando o provedor envia `Retry-After`, o backend propaga esse header para o cliente.
 
 ---
 
@@ -1241,10 +1436,15 @@ gemini.api.url=https://generativelanguage.googleapis.com/v1beta/models
 ### Rate Limiting e Fallback
 
 **Tratamento de Erros:**
-- ❌ `429 Too Many Requests` → Retorna `ERRO_IA`, usuário cadastra manualmente
-- ❌ `400 Bad Request` → Retorna `ERRO_IA`
-- ❌ Timeout → Retorna `ERRO_IA`
-- ❌ JSON inválido → Retorna `ERRO_IA`
+- ⚠️ `429 Too Many Requests` no Gemini:
+  - backend faz retry com backoff (ate 3 tentativas)
+  - se persistir, retorna `429` para o cliente com mensagem amigavel
+  - header `Retry-After` eh propagado quando enviado pelo provedor
+- ⚠️ falhas externas `5xx`/timeout no provedor:
+  - backend tenta novamente (retry) e, se falhar, responde `502 Bad Gateway`
+- ⚠️ parse invalido do texto retornado pela IA:
+  - backend retorna DTO de rascunho com `statusIa="ERRO_IA"` e `statusValidacao="PENDENTE"`
+  - sem gravacao no banco de produtos
 
 **Fallback Offline (Futuro):**
 - Google ML Kit rodando no dispositivo
@@ -1258,6 +1458,10 @@ gemini.api.url=https://generativelanguage.googleapis.com/v1beta/models
 ### Visão Geral
 
 O **Approval Workflow** é um **guard-rail** que impede estoquistas (USER) de fazerem mudanças não autorizadas em produtos, enquanto permite que gerentes (ADMIN) façam alterações imediatas.
+
+**Gatilho atual do workflow:**
+- É acionado apenas em `PUT /api/v1/products/{id}` quando o autor é `USER`.
+- Não é acionado no cadastro inicial (`POST /api/v1/products`).
 
 ### Diagrama de Estados
 
@@ -1359,15 +1563,18 @@ Usuario tenta atualizar produto
 
 **Criar Produto:**
 - Cadastro manual ou via IA
-- Validação de duplicatas (ID, código de barras)
-- Campos obrigatórios: id, descricao, precoVenda, quantidadeInicial
+- Validação de duplicatas (ID, referencia e codigo de barras)
+- Campos obrigatórios: `id`, `descricao`, `precoVenda`, `quantidadeInicial`
+- Campos opcionais relevantes: `precoCusto`, `quantidadeMinima`, `referencia`, `codigoBarras`
 - Automático: markup_percentual calculado
 - Criação de movimentação inicial (ENTRADA)
+- Em conflito de duplicidade (`409`), mobile pode reconciliar com ajuste de estoque no item existente
 
 **Atualizar Produto:**
 - ADMIN: Atualização imediata
 - USER: Cria solicitação de validação
-- Campos editáveis: descricao, cor, tamanho, precoVenda
+- Campos editáveis: referencia, codigoBarras, descricao, tamanho, cor, marca, precoCusto, precoVenda, quantidadeMinima, nota
+- `quantidadeAtual` nao eh editada diretamente; usa endpoint de ajuste de estoque
 - Auditoria: updatedBy, updatedAt
 
 **Consultar Produto:**
@@ -1386,12 +1593,13 @@ Usuario tenta atualizar produto
 - Chamada Gemini API
 - Extração de: descricao, tamanho, cor, marca, codigoBarras, precoVenda
 - statusIa = "IA_SUGERIDO"
-- Confirmação manual antes de salvar
+- Confirmação manual antes de salvar via modal de rascunho
+- Botão de fallback para cadastro manual quando IA falha
 
 **Tratamento de Erros:**
-- Fallback para cadastro manual se IA falhar
-- statusIa = "ERRO_IA"
-- Log de erros para análise
+- `429` da IA gera mensagem explicita de limite temporario (com `Retry-After` quando disponivel)
+- Falha de rede no upload gera feedback especifico de conectividade
+- Parse invalido de resposta da IA retorna rascunho com `statusIa = "ERRO_IA"` (sem persistir produto)
 
 ### 3. 🚦 Workflow de Validação
 
@@ -1399,6 +1607,8 @@ Usuario tenta atualizar produto
 - Lista pendências por ordem de criação
 - Visualização side-by-side (antes/depois)
 - Resumo de mudanças: "Descrição alterada, Preço aumentado"
+- Só recebe eventos de `PUT /products/{id}` de usuários `USER`
+- Cadastro inicial (`POST /products`) não entra na fila
 
 **Aprovação:**
 - ADMIN aplica mudanças ao produto
@@ -1461,10 +1671,24 @@ Usuario tenta atualizar produto
 4. Conflito → sync_status = CONFLITO, notifica usuário
 
 **Implementação atual (mobile):**
-- Base local SQLite inicializada com `expo-sqlite`
-- Fila local `sync_queue` criada para operações pendentes
-- Estrutura de cache e sincronização preparada com TanStack Query
-- Etapas futuras: replicação bidirecional completa de produtos e movimentações
+- Base local SQLite com tabelas:
+  - `products` (fonte principal de leitura da Home/Detalhe)
+  - `product_images` (imagens locais/remotas + status de sync)
+  - `pending_edits` (overlay de alterações pendentes de aprovação)
+  - `sync_queue` (operações offline)
+- Busca local instantânea por caractere (descricao/referencia/EAN) sem chamada de API.
+- `pullProducts()` faz:
+  1. push de pendências locais
+  2. pull da API (`GET /api/v1/products`)
+  3. persistência no SQLite
+  4. reconciliação com `GET /api/v1/validation/my`
+  5. invalidacão de queries React Query
+- Operações em fila já suportadas:
+  - `PRODUCT_UPDATE`
+  - `STOCK_ADJUSTMENT`
+  - `IMAGE_ADD`
+  - `IMAGE_DELETE`
+  - `IMAGE_SET_PRIMARY`
 
 ### 7. 📊 Auditoria e Logs
 
@@ -1496,6 +1720,13 @@ Usuario tenta atualizar produto
 | **TanStack Query** | 5.x | Cache e sync de dados |
 | **Expo Secure Store** | 15.x | Armazenamento seguro do JWT |
 | **Expo SQLite** | 16.x | Persistência offline local |
+| **Expo Image Picker** | 17.x | Câmera/galeria para scan |
+| **Expo Image Manipulator** | 14.x | Normalização/conversão de imagem antes de upload |
+| **Expo File System** | 19.x | Cache local de conteúdo binário de imagens |
+| **Expo Network** | 8.x | Detecção de conectividade para sync |
+| **React Hook Form** | 7.x | Estado e submit de formulários |
+| **Zod** | 4.x | Validação de schema no formulário |
+| **Tailwind Merge** | 3.x | Merge de classes NativeWind |
 
 ### Backend
 
@@ -1822,6 +2053,6 @@ ADMIN         Frontend    ValidationController ValidationService  ProductService
 
 ---
 
-**Última Atualização:** 15 de fevereiro de 2026  
-**Versão do Documento:** 1.3.0  
+**Última Atualização:** 17 de fevereiro de 2026  
+**Versão do Documento:** 1.6.0  
 **Autor:** Equipe VisionStock

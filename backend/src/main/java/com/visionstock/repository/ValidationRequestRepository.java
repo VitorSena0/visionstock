@@ -22,6 +22,8 @@ public interface ValidationRequestRepository extends JpaRepository<ValidationReq
      */
     List<ValidationRequest> findByProductIdOrderByRequestedAtDesc(UUID productId);
 
+    List<ValidationRequest> findByRequestedByOrderByRequestedAtDesc(UUID requestedBy);
+
     /**
      * Find all pending validation requests for a specific product.
      */

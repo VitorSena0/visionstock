@@ -2,6 +2,7 @@ package com.visionstock.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.visionstock.dto.ProductResponseDTO;
+import com.visionstock.exception.ExternalServiceRateLimitException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -63,7 +64,15 @@ class GeminiServiceIntegrationTest {
 
         // Act - Call real Gemini API
         System.out.println("🚀 Calling Gemini API with image...");
-        ProductResponseDTO result = geminiService.extractDataFromImage(mockFile);
+        ProductResponseDTO result;
+        try {
+            result = geminiService.extractDataFromImage(mockFile);
+        } catch (ExternalServiceRateLimitException ex) {
+            System.out.println("\n⚠️ API rate limited (429)");
+            System.out.println("   " + ex.getMessage());
+            assumeTrue(false, "API rate limited - skipping assertion");
+            return;
+        }
 
         // Assert
         assertNotNull(result, "Result should not be null");
@@ -76,13 +85,6 @@ class GeminiServiceIntegrationTest {
         System.out.println("   Preço Venda: " + result.getPrecoVenda());
         System.out.println("   Status IA: " + result.getStatusIa());
         System.out.println("   Status Validação: " + result.getStatusValidacao());
-
-        // Handle rate limiting gracefully
-        if ("ERRO_IA".equals(result.getStatusIa())) {
-            System.out.println("\n⚠️ API returned error - possibly rate limited (429)");
-            System.out.println("   Wait 60 seconds and try again, or check your API quota.");
-            assumeTrue(false, "API rate limited - skipping assertion");
-        }
 
         // Verify successful extraction
         assertEquals("IA_SUGERIDO", result.getStatusIa(), 
@@ -108,14 +110,15 @@ class GeminiServiceIntegrationTest {
                 imageBytes
         );
 
-        ProductResponseDTO result = geminiService.extractDataFromImage(mockFile);
+        ProductResponseDTO result;
+        try {
+            result = geminiService.extractDataFromImage(mockFile);
+        } catch (ExternalServiceRateLimitException ex) {
+            assumeTrue(false, "API rate limited - skipping");
+            return;
+        }
 
         assertNotNull(result);
-        
-        // Handle rate limiting
-        if ("ERRO_IA".equals(result.getStatusIa())) {
-            assumeTrue(false, "API rate limited - skipping");
-        }
         
         assertEquals("IA_SUGERIDO", result.getStatusIa());
     }

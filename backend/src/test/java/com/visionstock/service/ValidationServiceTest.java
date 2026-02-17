@@ -15,7 +15,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import static org.mockito.ArgumentMatchers.any;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -29,7 +28,10 @@ import com.visionstock.exception.ResourceNotFoundException;
 import com.visionstock.model.enums.ValidationStatus;
 import com.visionstock.model.inventory.Product;
 import com.visionstock.model.inventory.ValidationRequest;
+import com.visionstock.repository.ProductImageRepository;
 import com.visionstock.repository.ProductRepository;
+import com.visionstock.repository.StockMovementRepository;
+import com.visionstock.repository.ValidationImageStagingRepository;
 import com.visionstock.repository.ValidationRequestRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,9 +43,17 @@ class ValidationServiceTest {
     @Mock
     private ProductRepository productRepository;
 
+    @Mock
+    private StockMovementRepository stockMovementRepository;
+
+    @Mock
+    private ProductImageRepository productImageRepository;
+
+    @Mock
+    private ValidationImageStagingRepository validationImageStagingRepository;
+
     private ObjectMapper objectMapper;
 
-    @InjectMocks
     private ValidationService validationService;
 
     private Product testProduct;
@@ -65,6 +75,9 @@ class ValidationServiceTest {
         validationService = new ValidationService(
                 validationRequestRepository,
                 productRepository,
+                stockMovementRepository,
+                productImageRepository,
+                validationImageStagingRepository,
                 objectMapper);
 
         testProduct = Product.builder()

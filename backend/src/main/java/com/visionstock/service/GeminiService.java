@@ -3,13 +3,17 @@ package com.visionstock.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.visionstock.dto.ProductResponseDTO;
+import com.visionstock.exception.ExternalServiceException;
+import com.visionstock.exception.ExternalServiceRateLimitException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.math.BigDecimal;
 import java.util.Base64;
@@ -20,6 +24,8 @@ import java.util.Map;
 public class GeminiService {
 
     private static final Logger logger = LoggerFactory.getLogger(GeminiService.class);
+    private static final int MAX_GEMINI_ATTEMPTS = 3;
+    private static final long INITIAL_RETRY_BACKOFF_MS = 1200L;
 
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
@@ -71,23 +77,109 @@ public class GeminiService {
             String mimeType = file.getContentType() != null ? file.getContentType() : "image/jpeg";
 
             Map<String, Object> requestBody = buildRequest(base64Image, mimeType);
-
-            String response = webClient.post()
-                    .uri("/{model}:generateContent?key={key}", model, apiKey)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .bodyValue(requestBody)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block();
+            String response = callGeminiWithRetry(requestBody, startTime);
 
             long elapsed = System.currentTimeMillis() - startTime;
             logger.info("Gemini API response received in {} ms", elapsed);
 
             return parseResponse(response);
+        } catch (ExternalServiceRateLimitException ex) {
+            long elapsed = System.currentTimeMillis() - startTime;
+            logger.error("Gemini API rate limit after {} ms: {}", elapsed, ex.getMessage());
+            throw ex;
+        } catch (ExternalServiceException ex) {
+            long elapsed = System.currentTimeMillis() - startTime;
+            logger.error("Gemini API unavailable after {} ms: {}", elapsed, ex.getMessage());
+            throw ex;
         } catch (Exception e) {
             long elapsed = System.currentTimeMillis() - startTime;
             logger.error("Gemini API call failed after {} ms: {}", elapsed, e.getMessage());
-            return buildErrorDTO();
+            throw new ExternalServiceException(
+                    "Falha ao consultar a IA no momento. Tente novamente em instantes.");
+        }
+    }
+
+    private String callGeminiWithRetry(Map<String, Object> requestBody, long requestStartTime) {
+        for (int attempt = 1; attempt <= MAX_GEMINI_ATTEMPTS; attempt++) {
+            try {
+                return webClient.post()
+                        .uri("/{model}:generateContent?key={key}", model, apiKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .bodyValue(requestBody)
+                        .retrieve()
+                        .bodyToMono(String.class)
+                        .block();
+            } catch (WebClientResponseException.TooManyRequests ex) {
+                Integer retryAfterSeconds = parseRetryAfterSeconds(ex.getHeaders());
+                boolean shouldRetry = attempt < MAX_GEMINI_ATTEMPTS;
+                if (shouldRetry) {
+                    long backoffMs = computeBackoffMs(attempt, retryAfterSeconds);
+                    logger.warn(
+                            "Gemini returned 429 (attempt {}/{}). Retrying in {} ms",
+                            attempt,
+                            MAX_GEMINI_ATTEMPTS,
+                            backoffMs);
+                    sleep(backoffMs);
+                    continue;
+                }
+
+                long elapsed = System.currentTimeMillis() - requestStartTime;
+                logger.error("Gemini API call failed after {} ms: {}", elapsed, ex.getMessage());
+                throw new ExternalServiceRateLimitException(
+                        "Limite temporario da IA atingido. Aguarde alguns segundos e tente novamente.",
+                        retryAfterSeconds);
+            } catch (WebClientResponseException ex) {
+                boolean retryable = ex.getStatusCode().is5xxServerError();
+                boolean shouldRetry = retryable && attempt < MAX_GEMINI_ATTEMPTS;
+                if (shouldRetry) {
+                    long backoffMs = computeBackoffMs(attempt, null);
+                    logger.warn(
+                            "Gemini returned {} (attempt {}/{}). Retrying in {} ms",
+                            ex.getStatusCode().value(),
+                            attempt,
+                            MAX_GEMINI_ATTEMPTS,
+                            backoffMs);
+                    sleep(backoffMs);
+                    continue;
+                }
+
+                throw new ExternalServiceException(
+                        "Falha ao consultar a IA (HTTP " + ex.getStatusCode().value() + ")");
+            }
+        }
+
+        throw new ExternalServiceException("Falha ao consultar a IA no momento. Tente novamente.");
+    }
+
+    private long computeBackoffMs(int attempt, Integer retryAfterSeconds) {
+        if (retryAfterSeconds != null && retryAfterSeconds > 0) {
+            long withBuffer = Math.min((retryAfterSeconds * 1000L) + 250L, 8000L);
+            return Math.max(withBuffer, INITIAL_RETRY_BACKOFF_MS);
+        }
+
+        long exponential = INITIAL_RETRY_BACKOFF_MS * (1L << Math.max(0, attempt - 1));
+        return Math.min(exponential, 5000L);
+    }
+
+    private Integer parseRetryAfterSeconds(HttpHeaders headers) {
+        String raw = headers.getFirst(HttpHeaders.RETRY_AFTER);
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+
+        try {
+            int parsed = Integer.parseInt(raw.trim());
+            return parsed > 0 ? parsed : null;
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
         }
     }
 

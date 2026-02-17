@@ -1,6 +1,10 @@
 package com.visionstock.dto;
 
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
@@ -22,6 +26,7 @@ public class ProductCreateDTO {
 
     private String referencia;
 
+    @NotBlank(message = "Description is required")
     private String descricao;
 
     private String tamanho;
@@ -32,11 +37,21 @@ public class ProductCreateDTO {
 
     private String codigoBarras;
 
+    @Digits(integer = 8, fraction = 2, message = "Cost price must have up to 8 integer digits and 2 decimal places")
+    @DecimalMin(value = "0.0", inclusive = true, message = "Cost price must be at least 0")
+    @DecimalMax(value = "99999999.99", inclusive = true, message = "Cost price exceeds maximum allowed value")
     private BigDecimal precoCusto;
 
+    @NotNull(message = "Sale price is required")
+    @DecimalMin(value = "0.0", inclusive = true, message = "Sale price must be at least 0")
+    @DecimalMax(value = "99999999.99", inclusive = true, message = "Sale price exceeds maximum allowed value")
+    @Digits(integer = 8, fraction = 2, message = "Sale price must have up to 8 integer digits and 2 decimal places")
     private BigDecimal precoVenda;
 
     @NotNull(message = "Initial quantity is required")
     @Min(value = 0, message = "Initial quantity must be at least 0")
     private Integer quantidadeInicial;
+
+    @Min(value = 0, message = "Minimum quantity must be at least 0")
+    private Integer quantidadeMinima;
 }

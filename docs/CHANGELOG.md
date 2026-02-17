@@ -2,9 +2,101 @@
 
 Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 
-## [Unreleased] - 2026-02-15
+## [Unreleased] - 2026-02-17
 
 ### Adicionado
+
+- **Etapa 8.2.3 - Estabilização de cadastro/imagens em rede instável**
+  - **Backend**
+    - Novo tratamento explícito de indisponibilidade da IA:
+      - `ExternalServiceRateLimitException` para `429 Too Many Requests`
+      - `ExternalServiceException` para falhas de integração (`502`)
+    - `GeminiService` com retry/backoff para chamadas ao Gemini:
+      - até 3 tentativas para `429` e respostas `5xx`
+      - leitura de `Retry-After` quando disponível
+    - `GlobalExceptionHandler` atualizado para erros externos:
+      - `429` com mensagem amigável e header `Retry-After` (quando presente)
+      - `502` em falhas de gateway externo
+    - Tratamento de integridade de dados endurecido no `GlobalExceptionHandler`:
+      - `409` para duplicidade de `referencia`/`codigoBarras`
+      - `409` para conflito de imagem principal (`ux_product_images_primary_per_product`)
+      - `400` para overflow numérico (`SQLState 22003`)
+    - Upload de imagem com deduplicação por hash (`sha256`) para reduzir duplicação em retry/timeout
+    - Nova migration `database/migrations/003_harden_markup_and_conflicts.sql`:
+      - ajuste de `inventory.products.markup_percentual` para `DECIMAL(10,2)`
+  - **Mobile**
+    - Tratamento dedicado de erro `429` no fluxo de scan com orientação de espera
+    - Normalização determinística de upload de imagem via `expo-image-manipulator`
+    - Fluxo de criação com `draftProductId` estável para reduzir duplicações em retries
+    - Cache local autenticado de imagens remotas via `expo-file-system` + `axios` (`imageContentService`)
+    - Colunas de cache em `product_images` local (`cached_uri`, `cache_status`, `cache_updated_at`, `cache_error`)
+    - Reconciliação de conflito de cadastro: recuperação do produto existente + opção de ajuste de estoque
+
+- **Etapa 8.1/8.2 - Busca instantânea, edição completa e gestão estruturada de imagens**
+  - **Backend**
+    - Novos endpoints em `ProductController`:
+      - `POST /api/v1/products/{id}/stock-adjustments`
+      - `GET /api/v1/products/{id}/images`
+      - `GET /api/v1/products/{id}/images/{imageId}/content`
+      - `POST /api/v1/products/{id}/images` (multipart)
+      - `PATCH /api/v1/products/{id}/images/{imageId}/primary`
+      - `DELETE /api/v1/products/{id}/images/{imageId}`
+    - Novo endpoint de reconciliação por usuário:
+      - `GET /api/v1/validation/my`
+    - Novos modelos/DTOs/repos para mídia e validação por tipo de mudança:
+      - `ProductImage`, `ValidationImageStaging`
+      - `ActionResponseDTO`, `StockAdjustmentDTO`, `ProductImageMetadataDTO`
+      - `ValidationChangeType`, `ImageOperationType`
+  - **Banco de dados**
+    - Nova migration `database/migrations/002_add_product_images_and_validation_change_type.sql` com:
+      - tabela `inventory.product_images` (blob em `bytea`)
+      - tabela `inventory.validation_image_staging`
+      - coluna `change_type` em `inventory.validation_queue`
+      - índices e constraint de imagem principal por produto
+  - **Mobile**
+    - Nova rota de detalhe/edição:
+      - `app/product/[id]/index.tsx` (detalhe com galeria)
+      - `app/product/[id]/edit.tsx` (edição completa)
+    - Gestão de imagem no app:
+      - anexar por câmera/galeria no detalhe
+      - definir principal
+      - remover imagem
+      - auto-anexo da foto no cadastro (scan/manual) após salvar produto
+    - Fila offline expandida em SQLite:
+      - operações `PRODUCT_UPDATE`, `STOCK_ADJUSTMENT`, `IMAGE_ADD`, `IMAGE_DELETE`, `IMAGE_SET_PRIMARY`
+      - novas tabelas locais `product_images` e `pending_edits`
+    - Sincronização expandida:
+      - `pushPendingChanges()` antes do pull
+      - reconciliação com `GET /validation/my`
+      - invalidação de queries para lista, detalhe e imagens
+
+- **Etapa 7 - Fluxo Principal (Scan + Cadastro) no mobile**
+  - Integração completa de câmera e galeria com `expo-image-picker`:
+    - Botão de scan com ações separadas para câmera e galeria (`ImagePickerButton`)
+    - Permissões de câmera/galeria configuradas em `app.json`
+  - Integração de upload de imagem com backend via `multipart/form-data`:
+    - `uploadImage(imageUri)` em `src/services/api.ts`
+    - Montagem de `FormData` no formato compatível com React Native (`uri`, `name`, `type`)
+  - Fluxo de criação de produto com revisão antes de salvar:
+    - Modal de rascunho com mensagem explícita de que nada foi salvo ainda
+    - Submit do formulário para `POST /api/v1/products` com `useMutation`
+  - Cadastro manual disponível sem depender de sucesso da IA:
+    - Botão "Cadastrar manualmente" na home
+    - Ação de fallback no alerta de erro do scan
+  - Novo formulário de produto com `react-hook-form + zod` (`ProductForm`):
+    - Campos: `referencia`, `codigoBarras`, `descricao`, `precoCusto`, `precoVenda`,
+      `quantidadeInicial`, `quantidadeMinima`, `tamanho`, `cor`, `marca`
+    - Validação de decimal para preços e inteiro não-negativo para quantidades
+  - Tipos de produto no mobile adicionados em `src/types/product.ts`
+
+- **Bootstrap opcional de ADMIN em ambiente local/dev**
+  - Novo `DataInitializer` (`CommandLineRunner`) em `backend/src/main/java/com/visionstock/config/DataInitializer.java`
+  - Ativação controlada por perfil (`dev`/`local`) e flag:
+    - `SEED_ADMIN_ENABLED`
+    - `SEED_ADMIN_NOME`
+    - `SEED_ADMIN_EMAIL`
+    - `SEED_ADMIN_PASSWORD`
+  - Propriedades adicionadas em `application.properties` e `backend/.env.example`
 
 - **Etapa Mobile 1 - Base React Native (Expo) Offline-First**
   - Estrutura inicial do app em `mobile/vision-stock-mobile` com:
@@ -93,6 +185,51 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 
 ### Alterado
 
+- **Confiabilidade de imagem principal (backend)**
+  - `ProductImageService` passou a usar lock por produto + atualização atômica para primária
+  - `ProductImageRepository.clearPrimaryByProductId()` agora limpa todas as imagens ativas do produto
+  - Fluxos de upload/troca/remoção de imagem principal deixaram de depender de save em loop
+  - Endpoint de conteúdo de imagem passou a responder com `Content-Length` baseado em `image_data.length`
+
+- **Reconciliação de imagem no mobile (server wins com exceção pendente explícita)**
+  - `productImageRepository.upsertRemoteMetadata()` preserva primária local apenas quando existe intenção pendente válida na fila
+  - Sem pendência válida, a primária remota volta a ser a fonte de verdade após sync
+  - Seleção de imagem da Home/Detalhe prioriza fonte renderizável (`cached_uri` -> `local_uri` -> remota)
+
+- **Compatibilidade de UI mobile**
+  - Substituição de `SafeAreaView` legado por `react-native-safe-area-context` onde aplicável
+  - Ajuste de `expo-image-picker` para sintaxe atual de `mediaTypes`
+
+- **Home mobile (offline-first)**
+  - Busca local passa a filtrar instantaneamente por caractere em memória
+  - Botão de refresh rotulado explicitamente como **Sincronizar** para separar UX de busca e sync
+  - Cards continuam vindo do SQLite local, com sync via API em background/manual
+
+- **Fluxo de detalhe e edição**
+  - Botão `Editar` deixou de ser placeholder e agora abre formulário funcional
+  - Edição textual/financeira/minimos via `PUT /api/v1/products/{id}`
+  - `quantidadeAtual` permanece auditável por ajuste dedicado (`stock-adjustments`)
+
+- **Segurança backend**
+  - `SecurityConfig` atualizado para liberar:
+    - `GET /api/v1/validation/my` para `USER` e `ADMIN`
+    - endpoints de imagem e ajuste de estoque para `USER` e `ADMIN`
+  - Mantida proteção admin-only para fila administrativa de validação (`/api/v1/validation/**` exceto `/my`)
+
+- **Contrato de criação de produto alinhado com o schema de estoque**
+  - `ProductCreateDTO` atualizado com:
+    - validação obrigatória de `descricao` e `precoVenda`
+    - novo campo `quantidadeMinima` com validação `>= 0`
+  - `ProductService.createProduct()` passa a persistir `quantidadeMinima`
+  - Fluxo mobile de submit ajustado para enviar:
+    - `precoCusto`, `precoVenda`
+    - `quantidadeInicial`, `quantidadeMinima`
+    - `referencia` e `codigoBarras` editáveis no formulário
+
+- **Design system mobile**
+  - `AppButton` e `AppInput` atualizados para usar `tailwind-merge`
+  - Evita conflito de classes utilitárias do NativeWind em cenários de classes condicionais
+
 - **Backend configurado para acesso em rede local**
   - `server.address=${SERVER_ADDRESS:0.0.0.0}`
   - `server.port=${PORT:8080}`
@@ -130,6 +267,49 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
 
 ### Corrigido
 
+- **Scan com IA e resposta de erro**
+  - Antes: erros de quota do Gemini eram reportados de forma ambígua para o cliente
+  - Agora: `429` é retornado explicitamente com mensagem orientativa para nova tentativa
+
+- **Conflitos de imagem principal (`ux_product_images_primary_per_product`)**
+  - Corrigidas condições de corrida em upload/troca/remoção de principal
+  - Fluxos de aprovação de imagem em `ValidationService` alinhados com estratégia atômica
+
+- **Cadastros em rede instável**
+  - Melhor reconciliação de conflito por `referencia`/`codigoBarras`
+  - Pós-sucesso remoto com falha local agora força sincronização sem perder o cadastro
+  - Fluxo de retry no cadastro agora evita criação duplicada para o mesmo rascunho (`draftProductId` estável)
+
+- **Render de imagem no app**
+  - Corrigido cenário de “quadro vazio” com metadado sincronizado sem cache local válido
+  - Melhor fallback entre URI de cache, URI local e endpoint remoto autenticado
+  - Corrigido erro SQLite de placeholders (`18 values for 19 columns`) na persistência local de imagens
+
+- **Conflitos e erros de integridade no backend**
+  - Duplicidade de `referencia`/`codigo_barras` deixou de gerar erro genérico (`500`) e passa a retornar `409`
+  - Overflow de campos financeiros (`markup/precos`) deixou de gerar erro genérico e passa a retornar `400`
+
+- **Edição no detalhe mobile**
+  - Corrigido fluxo onde o botão `Editar` não executava ação
+  - Agora há submit real com tratamento online/offline e feedback de aprovação pendente
+
+- **Imagem de produto no app**
+  - Corrigido uso de `imagem_url` relativa com montagem da URL absoluta da API
+  - Adicionado suporte de header `Authorization` no carregamento de conteúdo protegido
+
+- **Compilação do backend**
+  - `GlobalExceptionHandler` corrigido em mapeamento de métodos HTTP permitidos
+  - Ajuste da referência de método para evitar erro de inferência de tipo no Java 21
+
+- **UX do modal de cadastro no mobile**
+  - Modal ajustado para manter formulário visível (altura fixa útil)
+  - Correção de cenário em que apenas o título era exibido sem campos de edição
+  - Mensagem de rascunho adicionada para evitar interpretação de "produto já cadastrado"
+
+- **Validação de entrada no cadastro mobile**
+  - Bloqueio explícito para salvar com `precoVenda` inválido/ausente
+  - Alertas claros para `quantidadeInicial`, `quantidadeMinima` e `precoCusto` inválidos
+
 - **Tratamento de erro HTTP para métodos/requests inválidos no backend**
   - `GET /api/v1/auth/login` não é mais reportado como erro genérico interno
   - `GlobalExceptionHandler` agora mapeia:
@@ -159,6 +339,21 @@ Todas as mudanças notáveis deste projeto serão documentadas neste arquivo.
   - Justificativa: ObjectMapper é leve, rápido e não faz IO
 
 ### Métricas
+
+- **Validação da Etapa 8.2.3**
+  - ✅ `cd backend && mvn -q -DskipTests compile`
+  - ✅ `cd backend && mvn -q -Dtest=ProductControllerTest,ProductImageServiceTest,ValidationServiceTest,SecurityAccessTest test`
+  - ✅ `cd backend && mvn -q -Dtest=ScanControllerTest,GeminiServiceTest test`
+  - ✅ `cd mobile/vision-stock-mobile && npx tsc --noEmit`
+
+- **Validação da Etapa 8.1/8.2**
+  - ✅ `npx tsc --noEmit` executado com sucesso em `mobile/vision-stock-mobile`
+  - ✅ `mvn -q -DskipTests compile` executado com sucesso em `backend`
+  - ✅ `mvn -q -Dtest=ProductControllerTest,SecurityAccessTest test` executado com sucesso em `backend`
+
+- **Validação da Etapa 7**
+  - ✅ `npx tsc --noEmit` executado com sucesso em `mobile/vision-stock-mobile`
+  - ✅ `mvn -q -DskipTests compile` executado com sucesso em `backend`
 
 - **Validação mobile (Etapa 1)**
   - ✅ `npx tsc --noEmit` executado com sucesso em `mobile/vision-stock-mobile`

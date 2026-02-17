@@ -1,8 +1,11 @@
 package com.visionstock.model.inventory;
 
 import com.visionstock.model.enums.ValidationStatus;
+import com.visionstock.model.enums.ValidationChangeType;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -52,10 +55,16 @@ public class ValidationRequest {
     @Builder.Default
     private ValidationStatus status = ValidationStatus.PENDING;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "change_type", nullable = false, length = 30)
+    @Builder.Default
+    private ValidationChangeType changeType = ValidationChangeType.PRODUCT_FIELDS;
+
     /**
      * JSON snapshot of the original product data before the requested changes.
      * This allows the admin to see what changed at a glance.
      */
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "dados_anteriores", columnDefinition = "jsonb", nullable = false)
     private String originalData;
 
@@ -63,6 +72,7 @@ public class ValidationRequest {
      * JSON snapshot of the proposed new product data.
      * If approved, these values will be applied to the Product entity.
      */
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "dados_novos", columnDefinition = "jsonb", nullable = false)
     private String newData;
 

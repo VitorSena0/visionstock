@@ -40,13 +40,21 @@ public class ValidationController {
         return ResponseEntity.ok(requests);
     }
 
+    @GetMapping("/my")
+    public ResponseEntity<List<ValidationRequestDTO>> listMyValidations(
+            @AuthenticationPrincipal AuthenticatedUser authenticatedUser) {
+        UUID userId = requireUserId(authenticatedUser);
+        List<ValidationRequestDTO> requests = validationService.getRequestsByRequester(userId);
+        return ResponseEntity.ok(requests);
+    }
+
     @PostMapping("/{id}/approve")
     public ResponseEntity<ProductResponseDTO> approveValidation(
             @PathVariable UUID id,
             @RequestBody(required = false) ValidationDecisionDTO request,
             @AuthenticationPrincipal AuthenticatedUser authenticatedUser) {
 
-        UUID adminId = requireAdminId(authenticatedUser);
+        UUID adminId = requireUserId(authenticatedUser);
         String reviewNote = request != null ? request.getReviewNote() : null;
         Product product = validationService.approveRequest(id, adminId, reviewNote);
         logger.info("Validation request {} approved by admin {}", id, adminId);
@@ -60,7 +68,7 @@ public class ValidationController {
             @RequestBody(required = false) ValidationDecisionDTO request,
             @AuthenticationPrincipal AuthenticatedUser authenticatedUser) {
 
-        UUID adminId = requireAdminId(authenticatedUser);
+        UUID adminId = requireUserId(authenticatedUser);
         String reviewNote = request != null ? request.getReviewNote() : null;
         Product product = validationService.rejectRequest(id, adminId, reviewNote);
         logger.info("Validation request {} rejected by admin {}", id, adminId);
@@ -68,7 +76,7 @@ public class ValidationController {
         return ResponseEntity.ok(ProductResponseDTO.fromEntity(product));
     }
 
-    private UUID requireAdminId(AuthenticatedUser authenticatedUser) {
+    private UUID requireUserId(AuthenticatedUser authenticatedUser) {
         if (authenticatedUser == null || authenticatedUser.getId() == null) {
             throw new AuthenticationCredentialsNotFoundException("Authenticated user not found");
         }

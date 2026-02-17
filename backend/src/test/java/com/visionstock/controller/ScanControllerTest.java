@@ -1,6 +1,7 @@
 package com.visionstock.controller;
 
 import com.visionstock.dto.ProductResponseDTO;
+import com.visionstock.exception.ExternalServiceRateLimitException;
 import com.visionstock.security.JwtAuthenticationFilter;
 import com.visionstock.service.GeminiService;
 import org.junit.jupiter.api.DisplayName;
@@ -74,21 +75,20 @@ class ScanControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/v1/scan with AI error should return error DTO")
-    void scanImage_aiError_shouldReturnErrorDTO() throws Exception {
-        ProductResponseDTO errorDTO = ProductResponseDTO.builder()
-                .statusIa("ERRO_IA")
-                .statusValidacao("PENDENTE")
-                .build();
-
-        when(geminiService.extractDataFromImage(any())).thenReturn(errorDTO);
+    @DisplayName("POST /api/v1/scan with Gemini rate limit should return 429")
+    void scanImage_aiRateLimit_shouldReturn429() throws Exception {
+        when(geminiService.extractDataFromImage(any()))
+                .thenThrow(new ExternalServiceRateLimitException(
+                        "Limite temporario da IA atingido. Aguarde alguns segundos e tente novamente.",
+                        10));
 
         MockMultipartFile imageFile = new MockMultipartFile(
                 "image", "label.jpg", "image/jpeg", "fake-image-data".getBytes());
 
         mockMvc.perform(multipart("/api/v1/scan").file(imageFile))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.statusIa").value("ERRO_IA"))
-                .andExpect(jsonPath("$.statusValidacao").value("PENDENTE"));
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "10"))
+                .andExpect(jsonPath("$.message")
+                        .value("Limite temporario da IA atingido. Aguarde alguns segundos e tente novamente."));
     }
 }

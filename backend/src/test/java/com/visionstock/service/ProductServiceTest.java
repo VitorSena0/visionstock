@@ -64,8 +64,9 @@ class ProductServiceTest {
     @DisplayName("createProduct should save product and return ProductResponseDTO")
     void createProduct_shouldSaveAndReturnDTO() {
         when(productRepository.existsById(productId)).thenReturn(false);
+        when(productRepository.existsByReferencia("REF-001")).thenReturn(false);
         when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(false);
-        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.saveAndFlush(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
 
         ProductResponseDTO result = productService.createProduct(validDTO, authenticatedUserId);
 
@@ -76,7 +77,7 @@ class ProductServiceTest {
         assertEquals("OK", result.getStatusValidacao());
         assertEquals(10, result.getQuantidadeAtual());
 
-        verify(productRepository).save(any(Product.class));
+        verify(productRepository).saveAndFlush(any(Product.class));
     }
 
     @Test
@@ -84,8 +85,9 @@ class ProductServiceTest {
     void createProduct_shouldCreateStockMovement() {
         UUID userId = UUID.randomUUID();
         when(productRepository.existsById(productId)).thenReturn(false);
+        when(productRepository.existsByReferencia("REF-001")).thenReturn(false);
         when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(false);
-        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.saveAndFlush(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
 
         productService.createProduct(validDTO, userId);
 
@@ -104,8 +106,9 @@ class ProductServiceTest {
     @DisplayName("createProduct should NOT create stock movement when authenticated user is null")
     void createProduct_noCreatedBy_shouldNotCreateMovement() {
         when(productRepository.existsById(productId)).thenReturn(false);
+        when(productRepository.existsByReferencia("REF-001")).thenReturn(false);
         when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(false);
-        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.saveAndFlush(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
 
         productService.createProduct(validDTO, null);
 
@@ -117,8 +120,9 @@ class ProductServiceTest {
     void createProduct_zeroQuantity_shouldNotCreateMovement() {
         validDTO.setQuantidadeInicial(0);
         when(productRepository.existsById(productId)).thenReturn(false);
+        when(productRepository.existsByReferencia("REF-001")).thenReturn(false);
         when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(false);
-        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.saveAndFlush(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
 
         productService.createProduct(validDTO, authenticatedUserId);
 
@@ -133,27 +137,42 @@ class ProductServiceTest {
         assertThrows(DuplicateProductException.class,
                 () -> productService.createProduct(validDTO, authenticatedUserId));
 
-        verify(productRepository, never()).save(any(Product.class));
+        verify(productRepository, never()).saveAndFlush(any(Product.class));
     }
 
     @Test
     @DisplayName("createProduct should throw DuplicateProductException when barcode already exists")
     void createProduct_duplicateBarcode_shouldThrow() {
         when(productRepository.existsById(productId)).thenReturn(false);
+        when(productRepository.existsByReferencia("REF-001")).thenReturn(false);
         when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(true);
 
         assertThrows(DuplicateProductException.class,
                 () -> productService.createProduct(validDTO, authenticatedUserId));
 
-        verify(productRepository, never()).save(any(Product.class));
+        verify(productRepository, never()).saveAndFlush(any(Product.class));
+    }
+
+    @Test
+    @DisplayName("createProduct should throw DuplicateProductException when reference already exists")
+    void createProduct_duplicateReference_shouldThrow() {
+        when(productRepository.existsById(productId)).thenReturn(false);
+        when(productRepository.existsByReferencia("REF-001")).thenReturn(true);
+
+        assertThrows(DuplicateProductException.class,
+                () -> productService.createProduct(validDTO, authenticatedUserId));
+
+        verify(productRepository, never()).saveAndFlush(any(Product.class));
+        verify(productRepository, never()).existsByCodigoBarras(any());
     }
 
     @Test
     @DisplayName("createProduct should set statusIa to MANUAL")
     void createProduct_shouldSetStatusIaManual() {
         when(productRepository.existsById(productId)).thenReturn(false);
+        when(productRepository.existsByReferencia("REF-001")).thenReturn(false);
         when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(false);
-        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.saveAndFlush(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
 
         ProductResponseDTO result = productService.createProduct(validDTO, authenticatedUserId);
 
@@ -167,15 +186,16 @@ class ProductServiceTest {
         validDTO.setId(frontendUUID);
 
         when(productRepository.existsById(frontendUUID)).thenReturn(false);
+        when(productRepository.existsByReferencia("REF-001")).thenReturn(false);
         when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(false);
-        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.saveAndFlush(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
 
         ProductResponseDTO result = productService.createProduct(validDTO, authenticatedUserId);
 
         assertEquals(frontendUUID, result.getId());
 
         ArgumentCaptor<Product> captor = ArgumentCaptor.forClass(Product.class);
-        verify(productRepository).save(captor.capture());
+        verify(productRepository).saveAndFlush(captor.capture());
         assertEquals(frontendUUID, captor.getValue().getId());
     }
 
@@ -185,8 +205,9 @@ class ProductServiceTest {
         UUID userId = UUID.randomUUID();
         validDTO.setPrecoCusto(null);
         when(productRepository.existsById(productId)).thenReturn(false);
+        when(productRepository.existsByReferencia("REF-001")).thenReturn(false);
         when(productRepository.existsByCodigoBarras("7891234567890")).thenReturn(false);
-        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.saveAndFlush(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
 
         productService.createProduct(validDTO, userId);
 
@@ -200,11 +221,12 @@ class ProductServiceTest {
     void createProduct_nullBarcode_shouldSkipBarcodeCheck() {
         validDTO.setCodigoBarras(null);
         when(productRepository.existsById(productId)).thenReturn(false);
-        when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(productRepository.existsByReferencia("REF-001")).thenReturn(false);
+        when(productRepository.saveAndFlush(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
 
         productService.createProduct(validDTO, authenticatedUserId);
 
         verify(productRepository, never()).existsByCodigoBarras(any());
-        verify(productRepository).save(any(Product.class));
+        verify(productRepository).saveAndFlush(any(Product.class));
     }
 }
