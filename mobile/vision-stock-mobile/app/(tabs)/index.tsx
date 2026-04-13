@@ -139,6 +139,12 @@ const isNetworkIssue = (error: unknown) =>
   axios.isAxiosError(error) &&
   (!error.response || error.message === 'Network Error' || error.code === 'ERR_NETWORK');
 
+const isEmptyScanResult = (data: ProductResponseDTO) => {
+  const textFields = [data.descricao, data.tamanho, data.cor, data.marca, data.codigoBarras];
+  const hasAnyText = textFields.some((value) => Boolean(value && value.trim().length > 0));
+  return !hasAnyText && data.precoVenda === null;
+};
+
 const isDuplicateProductConflictError = (error: unknown) => {
   if (!axios.isAxiosError(error)) {
     return false;
@@ -288,6 +294,18 @@ export default function HomeScreen() {
     onSuccess: (data) => {
       setScanResult(data);
       setDraftProductId(generateProductId());
+
+      if (isEmptyScanResult(data)) {
+        if (__DEV__) {
+          console.warn('[scan] AI returned empty extraction payload', data);
+        }
+
+        Alert.alert(
+          'Leitura incompleta da etiqueta',
+          'A IA nao conseguiu extrair os campos automaticamente desta imagem. Voce pode preencher manualmente e salvar normalmente.',
+        );
+      }
+
       setIsReviewModalVisible(true);
     },
     onError: (error) => {

@@ -41,7 +41,7 @@ class GeminiServiceIntegrationTest {
         // Use assumeTrue to properly skip tests when API key is not available
         assumeTrue(API_KEY != null && !API_KEY.isBlank(), 
                 "GEMINI_API_KEY environment variable not set - skipping integration test");
-        geminiService = new GeminiService(API_KEY, MODEL, API_URL, new ObjectMapper());
+        geminiService = new GeminiService(API_KEY, MODEL, "gemini-2.0-flash", API_URL, new ObjectMapper());
     }
 
     @Test

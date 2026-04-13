@@ -1,6 +1,5 @@
 import axios, { AxiosError } from 'axios';
 import { router } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
 
 import type {
   ActionResponseDTO,
@@ -13,6 +12,7 @@ import type {
   StockAdjustmentDTO,
   ValidationRequestDTO,
 } from '../types/product';
+import { deleteStoredItem, getStoredItem } from './storage';
 
 export const TOKEN_STORAGE_KEY = 'visionstock.token';
 export const USER_STORAGE_KEY = 'visionstock.user';
@@ -68,10 +68,10 @@ const getMimeTypeFromFileName = (fileName: string) => {
 export type UploadImagePayload =
   | string
   | {
-      uri: string;
-      fileName?: string | null;
-      mimeType?: string | null;
-    };
+    uri: string;
+    fileName?: string | null;
+    mimeType?: string | null;
+  };
 
 const resolveUploadImagePayload = (payload: UploadImagePayload) => {
   if (typeof payload === 'string') {
@@ -235,14 +235,14 @@ export const setUnauthorizedHandler = (handler: UnauthorizedHandler | null) => {
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
 api.interceptors.request.use(async (config) => {
-  const token = await SecureStore.getItemAsync(TOKEN_STORAGE_KEY);
+  const token = await getStoredItem(TOKEN_STORAGE_KEY);
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -258,8 +258,8 @@ api.interceptors.response.use(
       isHandlingUnauthorized = true;
 
       try {
-        await SecureStore.deleteItemAsync(TOKEN_STORAGE_KEY);
-        await SecureStore.deleteItemAsync(USER_STORAGE_KEY);
+        await deleteStoredItem(TOKEN_STORAGE_KEY);
+        await deleteStoredItem(USER_STORAGE_KEY);
 
         if (onUnauthorized) {
           await onUnauthorized();

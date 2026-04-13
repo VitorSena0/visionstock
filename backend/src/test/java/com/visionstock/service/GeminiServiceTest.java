@@ -18,7 +18,7 @@ class GeminiServiceTest {
     @BeforeEach
     void setUp() {
         geminiService = new GeminiService(
-                "${gemini.api.key}", "${gemini.api.model}",
+                "${gemini.api.key}", "${gemini.api.model}", "${gemini.api.fallback-model}",
                 "https://generativelanguage.googleapis.com/v1/models",
                 new ObjectMapper());
     }

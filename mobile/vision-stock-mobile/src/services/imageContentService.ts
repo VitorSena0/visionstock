@@ -1,5 +1,6 @@
 import { Buffer } from 'buffer';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
 
 import { api, withApiPrefix } from './api';
 
@@ -85,6 +86,31 @@ export const cacheRemoteProductImageContent = async (
   contentType: string | null;
   byteLength: number;
 }> => {
+  if (Platform.OS === 'web') {
+    const response = await api.get<Blob>(
+      withApiPrefix(`/products/${productId}/images/${imageId}/content`),
+      {
+        responseType: 'blob',
+      },
+    );
+
+    const blob = response.data;
+    const contentType =
+      (typeof response.headers['content-type'] === 'string'
+        ? response.headers['content-type']
+        : blob.type || null) ?? null;
+
+    if (!blob || blob.size <= 0) {
+      throw new Error('Invalid or empty image payload');
+    }
+
+    return {
+      cachedUri: URL.createObjectURL(blob),
+      contentType,
+      byteLength: blob.size,
+    };
+  }
+
   await ensureCacheDirectory();
 
   const response = await api.get<ArrayBuffer>(

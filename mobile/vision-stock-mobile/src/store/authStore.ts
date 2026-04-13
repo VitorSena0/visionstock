@@ -1,6 +1,5 @@
 import axios from 'axios';
 import { router } from 'expo-router';
-import * as SecureStore from 'expo-secure-store';
 import { create } from 'zustand';
 
 import {
@@ -9,6 +8,11 @@ import {
   USER_STORAGE_KEY,
   withApiPrefix,
 } from '../services/api';
+import {
+  deleteStoredItem,
+  getStoredItem,
+  setStoredItem,
+} from '../services/storage';
 import type { AuthResponseDTO, LoginRequestDTO, User } from '../types/auth';
 
 type AuthStore = {
@@ -59,8 +63,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   hydrate: async () => {
     const [token, rawUser] = await Promise.all([
-      SecureStore.getItemAsync(TOKEN_STORAGE_KEY),
-      SecureStore.getItemAsync(USER_STORAGE_KEY),
+      getStoredItem(TOKEN_STORAGE_KEY),
+      getStoredItem(USER_STORAGE_KEY),
     ]);
 
     let parsedUser: User | null = null;
@@ -101,8 +105,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       };
 
       await Promise.all([
-        SecureStore.setItemAsync(TOKEN_STORAGE_KEY, data.token),
-        SecureStore.setItemAsync(USER_STORAGE_KEY, JSON.stringify(user)),
+        setStoredItem(TOKEN_STORAGE_KEY, data.token),
+        setStoredItem(USER_STORAGE_KEY, JSON.stringify(user)),
       ]);
 
       set({
@@ -125,8 +129,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   clearSession: async () => {
     await Promise.all([
-      SecureStore.deleteItemAsync(TOKEN_STORAGE_KEY),
-      SecureStore.deleteItemAsync(USER_STORAGE_KEY),
+      deleteStoredItem(TOKEN_STORAGE_KEY),
+      deleteStoredItem(USER_STORAGE_KEY),
     ]);
 
     set({ token: null, user: null, error: null });

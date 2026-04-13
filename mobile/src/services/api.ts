@@ -6,7 +6,7 @@ export const TOKEN_STORAGE_KEY = 'visionstock.token';
 export const USER_STORAGE_KEY = 'visionstock.user';
 
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://192.168.100.22:8080/api/v1';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://10.99.144.221:8080/api/v1';
 
 type UnauthorizedHandler = () => void | Promise<void>;
 

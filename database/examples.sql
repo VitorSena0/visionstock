@@ -20,7 +20,7 @@ INSERT INTO auth.users (
 ) VALUES (
     'João Silva',
     'joao.silva@visionstock.com',
-    '$2b$10$abcdefghijklmnopqrstuvwxyz123456',  -- Hash bcrypt da senha
+    '$2b$10$abcdefghijklmnopqrstuvwxyz123456',  -- Hash bcrypt da senha - Equivalente a "senha123"
     'ADMIN',
     true
 ) RETURNING id, nome, role;
@@ -35,7 +35,7 @@ INSERT INTO auth.users (
 ) VALUES (
     'Maria Santos',
     'maria.santos@visionstock.com',
-    '$2b$10$zyxwvutsrqponmlkjihgfedcba654321',
+    '$2b$10$zyxwvutsrqponmlkjihgfedcba654321', -- 
     'USER',
     true
 ) RETURNING id, nome, role;
