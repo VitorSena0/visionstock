@@ -40,6 +40,7 @@ class GeminiServiceTest {
 
         ProductResponseDTO dto = geminiService.parseResponse(geminiResponse);
 
+        assertNull(dto.getReferencia());
         assertEquals("Camiseta Polo Azul", dto.getDescricao());
         assertEquals("M", dto.getTamanho());
         assertEquals("Azul", dto.getCor());
@@ -73,6 +74,27 @@ class GeminiServiceTest {
         assertEquals("Levi's", dto.getMarca());
         assertNull(dto.getCodigoBarras());
         assertEquals(0, new BigDecimal("199.90").compareTo(dto.getPrecoVenda()));
+    }
+
+    @Test
+    @DisplayName("parseResponse should extract and normalize reference field")
+    void parseResponse_shouldExtractReference() {
+        String geminiResponse = """
+                {
+                  "candidates": [{
+                    "content": {
+                      "parts": [{
+                        "text": "{\\"referencia\\":\\"REF: CAM-123\\",\\"descricao\\":\\"Camisa Social\\",\\"tamanho\\":\\"G\\",\\"cor\\":\\"Branca\\",\\"marca\\":\\"Alpha\\",\\"codigoBarras\\":null,\\"precoVenda\\":129.90}"
+                      }]
+                    }
+                  }]
+                }
+                """;
+
+        ProductResponseDTO dto = geminiService.parseResponse(geminiResponse);
+
+        assertEquals("CAM-123", dto.getReferencia());
+        assertEquals("Camisa Social", dto.getDescricao());
     }
 
     @Test
@@ -139,6 +161,7 @@ class GeminiServiceTest {
     @DisplayName("System instruction should instruct AI to return JSON only")
     void systemInstruction_shouldContainJsonRequirement() {
         assertTrue(GeminiService.SYSTEM_INSTRUCTION.contains("APENAS um JSON válido"));
+      assertTrue(GeminiService.SYSTEM_INSTRUCTION.contains("referencia"));
         assertTrue(GeminiService.SYSTEM_INSTRUCTION.contains("descricao"));
         assertTrue(GeminiService.SYSTEM_INSTRUCTION.contains("tamanho"));
         assertTrue(GeminiService.SYSTEM_INSTRUCTION.contains("cor"));

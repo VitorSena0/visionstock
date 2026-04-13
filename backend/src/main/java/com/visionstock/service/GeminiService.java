@@ -50,6 +50,7 @@ public class GeminiService {
             de roupas e extrair informações do produto.
 
             Analise a imagem fornecida e extraia as seguintes informações:
+            - referencia: número de referência da peça (ex: REF 12345, Referência ABC-10)
             - descricao: descrição do produto 
             - tamanho: tamanho indicado na etiqueta 
             - cor: cor do produto 
@@ -61,9 +62,10 @@ public class GeminiService {
             1. Retorne APENAS um JSON válido, sem markdown, sem crases, sem explicações.
             2. Se não conseguir identificar um campo, use null.
             3. O campo precoVenda deve ser um número decimal ou null.
-            4. Use o seguinte formato exato:
+            4. Para referencia, quando houver prefixos como REF, REF., REFERENCIA, RETORNE apenas o valor da referência.
+            5. Use o seguinte formato exato:
 
-            {"descricao":"...","tamanho":"...","cor":"...","marca":"...","codigoBarras":"...","precoVenda":null}
+            {"referencia":"...","descricao":"...","tamanho":"...","cor":"...","marca":"...","codigoBarras":"...","precoVenda":null}
             """;
 
     public GeminiService(
@@ -378,14 +380,23 @@ public class GeminiService {
                 return buildErrorDTO();
             }
 
-            String descricao = getTextOrNull(data, "descricao");
+                String referencia = normalizeReference(getFirstTextOrNull(
+                    data,
+                    "referencia",
+                    "referência",
+                    "ref",
+                    "numeroReferencia",
+                    "numero_referencia",
+                    "codigoReferencia",
+                    "codigo_ref"));
+                String descricao = getTextOrNull(data, "descricao");
             String tamanho = getTextOrNull(data, "tamanho");
             String cor = getTextOrNull(data, "cor");
             String marca = getTextOrNull(data, "marca");
             String codigoBarras = getTextOrNull(data, "codigoBarras");
             BigDecimal precoVenda = getDecimalOrNull(data, "precoVenda");
 
-            if (isAllMainFieldsEmpty(descricao, tamanho, cor, marca, codigoBarras, precoVenda)) {
+                if (isAllMainFieldsEmpty(referencia, descricao, tamanho, cor, marca, codigoBarras, precoVenda)) {
                 logger.warn(
                         "Gemini extracted empty result (all fields null). finishReason={}, modelPayloadSnippet={}",
                         finishReason,
@@ -393,6 +404,7 @@ public class GeminiService {
             }
 
             return ProductResponseDTO.builder()
+                    .referencia(referencia)
                     .descricao(descricao)
                     .tamanho(tamanho)
                     .cor(cor)
@@ -408,13 +420,14 @@ public class GeminiService {
         }
     }
 
-    private boolean isAllMainFieldsEmpty(String descricao,
+    private boolean isAllMainFieldsEmpty(String referencia,
+                                         String descricao,
                                          String tamanho,
                                          String cor,
                                          String marca,
                                          String codigoBarras,
                                          BigDecimal precoVenda) {
-        return Stream.of(descricao, tamanho, cor, marca, codigoBarras)
+        return Stream.of(referencia, descricao, tamanho, cor, marca, codigoBarras)
                 .allMatch(value -> value == null || value.isBlank())
                 && precoVenda == null;
     }
@@ -438,6 +451,27 @@ public class GeminiService {
             return null;
         }
         return value.asText();
+    }
+
+    private String getFirstTextOrNull(JsonNode node, String... fields) {
+        for (String field : fields) {
+            String value = getTextOrNull(node, field);
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private String normalizeReference(String referenciaRaw) {
+        if (referenciaRaw == null || referenciaRaw.isBlank()) {
+            return null;
+        }
+
+        String trimmed = referenciaRaw.trim();
+        String withoutPrefix = trimmed.replaceFirst("(?i)^\\s*(ref(?:er[êe]ncia)?\\.?|refer[êe]ncia\\.?|c[óo]d(?:igo)?\\.?\\s*ref\\.?)\\s*[:#-]?\\s*", "");
+        String normalized = withoutPrefix.trim();
+        return normalized.isBlank() ? null : normalized;
     }
 
     private BigDecimal getDecimalOrNull(JsonNode node, String field) {
